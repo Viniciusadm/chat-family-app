@@ -35,18 +35,6 @@ function rowToSession(row: SessionRow): LocalSession {
 }
 
 export const SessionRepository = {
-  async getSession(authUserId: string): Promise<LocalSession | null> {
-    const db = await getDatabase();
-    const row = await db.getFirstAsync<SessionRow>(
-      `SELECT *
-       FROM app_sessions
-       WHERE auth_user_id = ?`,
-      [authUserId]
-    );
-
-    return row ? rowToSession(row) : null;
-  },
-
   async getLastApprovedSession(): Promise<LocalSession | null> {
     const db = await getDatabase();
     const row = await db.getFirstAsync<SessionRow>(

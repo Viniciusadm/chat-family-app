@@ -20,14 +20,6 @@ export type KeyRecipientDeviceDto = {
   created_at?: string;
 };
 
-export function createDevice(body: {
-  device_id: string;
-  push_token?: string | null;
-  public_key?: string | null;
-}) {
-  return apiFetch<{ id: string }>("/devices", { method: "POST", body });
-}
-
 export function updateDevice(deviceId: string, body: {
   device_id: string;
   push_token?: string | null;

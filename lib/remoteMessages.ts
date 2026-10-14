@@ -15,8 +15,6 @@ export async function ensureTextMessageRemote({
 }: {
   chatId: string;
   messageId: string;
-  tenantId: string;
-  senderId: string;
   ciphertext: string;
   iv: string;
   replyTo?: MessageReplySnapshot | null;
@@ -40,8 +38,6 @@ export async function ensureAudioMessageRemote({
 }: {
   chatId: string;
   messageId: string;
-  tenantId: string;
-  senderId: string;
   audioUrl: string | null;
   audioDuration: number | null;
   replyTo?: MessageReplySnapshot | null;
@@ -67,8 +63,6 @@ export async function ensureImageMessageRemote({
 }: {
   chatId: string;
   messageId: string;
-  tenantId: string;
-  senderId: string;
   imageUrl: string | null;
   thumbnailUrl?: string | null;
   imageWidth: number | null;

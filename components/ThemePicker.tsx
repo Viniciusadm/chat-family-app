@@ -1,5 +1,12 @@
 import { useTheme, type ThemeMode } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import {
+  fontSizes,
+  fontWeights,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -9,40 +16,41 @@ const OPTIONS: { value: ThemeMode; label: string }[] = [
   { value: "system", label: "Sistema" },
 ];
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    section: { marginTop: spacing.xxxl, alignSelf: "stretch" },
+    title: {
+      fontSize: fontSizes.subhead,
+      fontWeight: fontWeights.bold,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      color: t.mutedForeground,
+      marginBottom: spacing.sm,
+    },
+    group: {
+      backgroundColor: t.card,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: t.border,
+      overflow: "hidden",
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.lg,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: t.border,
+    },
+    rowLast: { borderBottomWidth: 0 },
+    label: { fontSize: fontSizes.body, color: t.foreground },
+    pressed: { opacity: 0.6 },
+  });
+
 export function ThemePicker() {
   const { mode, setMode, theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      section: { marginTop: 32, alignSelf: "stretch" },
-      title: {
-        fontSize: 13,
-        fontWeight: "700",
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        color: t.mutedForeground,
-        marginBottom: 8,
-      },
-      group: {
-        backgroundColor: t.card,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: t.border,
-        overflow: "hidden",
-      },
-      row: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        paddingHorizontal: 16,
-        paddingVertical: 14,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: t.border,
-      },
-      rowLast: { borderBottomWidth: 0 },
-      label: { fontSize: 16, color: t.foreground },
-      pressed: { opacity: 0.6 },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
 
   return (
     <View style={styles.section}>

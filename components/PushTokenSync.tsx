@@ -9,18 +9,18 @@ import { AppState } from "react-native";
 const LAST_ACTIVE_INTERVAL_MS = 60_000;
 
 export function PushTokenSync() {
-  const { deviceId, currentUser, loading, sessionReady, needsPushToken } = useAuth();
+  const { deviceId, currentUser, loading, sessionReady } = useAuth();
   const { isOnline } = useConnectivity();
   const { token, refresh } = useExpoPushToken();
   const appState = useRef(AppState.currentState);
 
   useEffect(() => {
-    if (!isOnline || loading || !sessionReady || needsPushToken) return;
+    if (!isOnline || loading || !sessionReady) return;
     refresh();
-  }, [isOnline, loading, sessionReady, needsPushToken, refresh]);
+  }, [isOnline, loading, sessionReady, refresh]);
 
   useEffect(() => {
-    if (!isOnline || loading || !sessionReady || needsPushToken) return;
+    if (!isOnline || loading || !sessionReady) return;
     const sub = AppState.addEventListener("change", (next) => {
       if (appState.current.match(/inactive|background/) && next === "active") {
         refresh();
@@ -28,7 +28,7 @@ export function PushTokenSync() {
       appState.current = next;
     });
     return () => sub.remove();
-  }, [isOnline, loading, sessionReady, needsPushToken, refresh]);
+  }, [isOnline, loading, sessionReady, refresh]);
 
   useEffect(() => {
     if (!isOnline || loading || !deviceId || !currentUser || !token || !isValidExpoPushTokenString(token)) {
@@ -38,7 +38,7 @@ export function PushTokenSync() {
   }, [currentUser, deviceId, isOnline, loading, token]);
 
   useEffect(() => {
-    if (!isOnline || loading || !deviceId || !currentUser || needsPushToken) return;
+    if (!isOnline || loading || !deviceId || !currentUser) return;
 
     const tick = () => {
       heartbeat(deviceId).catch(() => {});
@@ -46,7 +46,7 @@ export function PushTokenSync() {
 
     const id = setInterval(tick, LAST_ACTIVE_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [currentUser, deviceId, isOnline, loading, needsPushToken]);
+  }, [currentUser, deviceId, isOnline, loading]);
 
   return null;
 }

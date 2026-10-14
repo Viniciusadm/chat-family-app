@@ -8,6 +8,7 @@ export type ThemeTokens = {
   primaryTint: string;
   primaryTintStrong: string;
   border: string;
+  controlBorder: string;
   headerBorder: string;
   destructive: string;
   destructiveForeground: string;
@@ -45,6 +46,7 @@ export const lightTheme: ThemeTokens = {
   primaryTint: "rgba(31,168,92,0.10)",
   primaryTintStrong: "rgba(31,168,92,0.20)",
   border: "#e2e8f0",
+  controlBorder: "#8794a3",
   headerBorder: "#d6dde4",
   destructive: "#dc2626",
   destructiveForeground: "#ffffff",
@@ -58,7 +60,7 @@ export const lightTheme: ThemeTokens = {
   bubbleOtherForeground: "#22262a",
   recording: "#dc2626",
   audioProgress: "#1fa85c",
-  timestamp: "#7d8a9a",
+  timestamp: "#5f6b7a",
   card: "#ffffff",
   shadow: "#000000",
   shadowOpacity: 0.08,
@@ -68,7 +70,7 @@ export const lightTheme: ThemeTokens = {
   accent: "#7c3aed",
   accentForeground: "#ffffff",
   inputBorder: "#e2e8f0",
-  inputPlaceholder: "#9aa5b1",
+  inputPlaceholder: "#7d8a9a",
   progressTrack: "rgba(0,0,0,0.08)",
 };
 
@@ -82,6 +84,7 @@ export const darkTheme: ThemeTokens = {
   primaryTint: "rgba(52,196,122,0.16)",
   primaryTintStrong: "rgba(52,196,122,0.28)",
   border: "#232b32",
+  controlBorder: "#6b7682",
   headerBorder: "#2a333b",
   destructive: "#f87171",
   destructiveForeground: "#1a0a0a",
@@ -95,7 +98,7 @@ export const darkTheme: ThemeTokens = {
   bubbleOtherForeground: "#e6ebef",
   recording: "#f87171",
   audioProgress: "#34c47a",
-  timestamp: "#8a95a1",
+  timestamp: "#b0bac4",
   card: "#161c21",
   shadow: "#000000",
   shadowOpacity: 0.5,
@@ -105,6 +108,65 @@ export const darkTheme: ThemeTokens = {
   accent: "#a78bfa",
   accentForeground: "#1a0f2e",
   inputBorder: "#2a333b",
-  inputPlaceholder: "#6b7682",
+  inputPlaceholder: "#808b97",
   progressTrack: "rgba(255,255,255,0.10)",
 };
+
+export const spacing = {
+  none: 0,
+  xxs: 2,
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+  huge: 40,
+  giant: 48,
+} as const;
+
+export const radius = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  pill: 999,
+} as const;
+
+export const fontSizes = {
+  caption: 11,
+  footnote: 12,
+  subhead: 14,
+  bodySmall: 15,
+  body: 16,
+  headline: 18,
+  title: 20,
+  title2: 22,
+  largeTitle: 26,
+} as const;
+
+export const lineHeights = {
+  caption: 14,
+  footnote: 16,
+  subhead: 18,
+  bodySmall: 20,
+  body: 22,
+  headline: 24,
+  title: 26,
+  title2: 28,
+  largeTitle: 32,
+} as const;
+
+export const fontWeights = {
+  regular: "400",
+  medium: "500",
+  semibold: "600",
+  bold: "700",
+} as const;
+
+export const maxFontScale = {
+  compact: 1.3,
+} as const;

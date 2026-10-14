@@ -10,6 +10,13 @@ import { isRemoteUrl, mediaAuthHeaders } from "@/src/api/client";
 import { uploadProfilePhoto, deleteProfilePhoto } from "@/src/api/media";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import {
+  fontSizes,
+  fontWeights,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -29,120 +36,126 @@ function roleLabel(role: string) {
   return role === "adult" ? "Adulto" : "Criança";
 }
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: t.background,
+    },
+    center: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    content: {
+      flex: 1,
+      alignItems: "center",
+      paddingHorizontal: spacing.xxl,
+      paddingTop: 36,
+    },
+    avatarWrap: {
+      width: 132,
+      height: 132,
+      borderRadius: radius.pill,
+      overflow: "hidden",
+    },
+    savingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: t.modalBackdrop,
+    },
+    name: {
+      marginTop: spacing.lg,
+      fontSize: fontSizes.title2,
+      fontWeight: fontWeights.bold,
+      color: t.foreground,
+      textAlign: "center",
+    },
+    meta: {
+      marginTop: spacing.xs,
+      fontSize: fontSizes.subhead,
+      color: t.mutedForeground,
+    },
+    actions: {
+      alignSelf: "stretch",
+      marginTop: spacing.xxxl,
+      gap: spacing.md,
+    },
+    primaryBtn: {
+      minHeight: 48,
+      borderRadius: radius.md,
+      backgroundColor: t.primary,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
+    },
+    primaryBtnText: {
+      color: t.primaryForeground,
+      fontSize: fontSizes.body,
+      fontWeight: fontWeights.bold,
+    },
+    dangerBtn: {
+      minHeight: 48,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: t.border,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
+    },
+    dangerBtnText: {
+      color: t.destructive,
+      fontSize: fontSizes.body,
+      fontWeight: fontWeights.bold,
+    },
+    photoModalRoot: {
+      flex: 1,
+      backgroundColor: t.viewerBackdrop,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacing.lg,
+    },
+    photoModalHeader: {
+      position: "absolute",
+      top: spacing.giant,
+      right: spacing.xl,
+      zIndex: 2,
+    },
+    photoClose: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: t.overlayLight,
+    },
+    fullPhoto: {
+      width: "100%",
+      height: "82%",
+    },
+    logoutBtn: {
+      alignSelf: "stretch",
+      marginTop: spacing.xxl,
+    },
+    pressed: {
+      opacity: 0.72,
+    },
+  });
+
 export default function ProfileScreen() {
   const router = useRouter();
   const { memberId } = useLocalSearchParams<{ memberId?: string }>();
-  const { currentUser, setCurrentUserPhoto } = useAuth();
+  const { currentUser, setCurrentUserPhoto, logout } = useAuth();
   const { isOnline } = useConnectivity();
   const memberProfiles = useMemberProfiles();
   const [saving, setSaving] = useState(false);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      screen: {
-        flex: 1,
-        backgroundColor: t.background,
-      },
-      center: {
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      content: {
-        flex: 1,
-        alignItems: "center",
-        paddingHorizontal: 24,
-        paddingTop: 36,
-      },
-      avatarWrap: {
-        width: 132,
-        height: 132,
-        borderRadius: 66,
-        overflow: "hidden",
-      },
-      savingOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: t.modalBackdrop,
-      },
-      name: {
-        marginTop: 18,
-        fontSize: 22,
-        fontWeight: "700",
-        color: t.foreground,
-        textAlign: "center",
-      },
-      meta: {
-        marginTop: 6,
-        fontSize: 14,
-        color: t.mutedForeground,
-      },
-      actions: {
-        alignSelf: "stretch",
-        marginTop: 32,
-        gap: 12,
-      },
-      primaryBtn: {
-        minHeight: 48,
-        borderRadius: 12,
-        backgroundColor: t.primary,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-      },
-      primaryBtnText: {
-        color: t.primaryForeground,
-        fontSize: 16,
-        fontWeight: "700",
-      },
-      dangerBtn: {
-        minHeight: 48,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: t.border,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-      },
-      dangerBtnText: {
-        color: t.destructive,
-        fontSize: 16,
-        fontWeight: "700",
-      },
-      photoModalRoot: {
-        flex: 1,
-        backgroundColor: t.viewerBackdrop,
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-      },
-      photoModalHeader: {
-        position: "absolute",
-        top: 48,
-        right: 20,
-        zIndex: 2,
-      },
-      photoClose: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: t.overlayLight,
-      },
-      fullPhoto: {
-        width: "100%",
-        height: "82%",
-      },
-      pressed: {
-        opacity: 0.72,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
 
   if (!currentUser) {
     return (
@@ -173,7 +186,10 @@ export default function ProfileScreen() {
     if (saving || !canMutatePhoto) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("", "Permita acesso às fotos para escolher uma imagem.");
+      Alert.alert(
+        "Permissão necessária",
+        "Permita acesso às fotos para escolher uma imagem."
+      );
       return;
     }
 
@@ -188,7 +204,10 @@ export default function ProfileScreen() {
     const asset = result.assets[0];
     if (!asset) return;
     if (asset.width !== asset.height) {
-      Alert.alert("", "A foto precisa ser cortada em formato quadrado antes do envio.");
+      Alert.alert(
+        "Foto inválida",
+        "A foto precisa ser cortada em formato quadrado antes do envio."
+      );
       return;
     }
 
@@ -202,7 +221,7 @@ export default function ProfileScreen() {
       await setCurrentUserPhoto(uploaded.url, uploaded.path ?? null);
     } catch (e) {
       Alert.alert(
-        "",
+        "Erro ao salvar foto",
         e instanceof Error ? e.message : "Não foi possível salvar a foto."
       );
     } finally {
@@ -213,19 +232,34 @@ export default function ProfileScreen() {
   const removePhoto = async () => {
     if (saving || !canMutatePhoto || !currentUser.photoUrl) return;
     setSaving(true);
-    const previousPath = currentUser.photoPath ?? null;
     try {
-      void previousPath;
       await deleteProfilePhoto();
       await setCurrentUserPhoto(null, null);
     } catch (e) {
       Alert.alert(
-        "",
+        "Erro ao remover foto",
         e instanceof Error ? e.message : "Não foi possível remover a foto."
       );
     } finally {
       setSaving(false);
     }
+  };
+
+  const confirmLogout = () => {
+    if (loggingOut) return;
+    Alert.alert("Sair", "Deseja sair da sua conta neste aparelho?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Sair",
+        style: "destructive",
+        onPress: () => {
+          setLoggingOut(true);
+          void logout()
+            .catch(() => {})
+            .finally(() => setLoggingOut(false));
+        },
+      },
+    ]);
   };
 
   return (
@@ -237,6 +271,12 @@ export default function ProfileScreen() {
             if (viewedProfile.photoUrl) setPhotoModalVisible(true);
           }}
           disabled={!viewedProfile.photoUrl}
+          accessibilityRole={viewedProfile.photoUrl ? "imagebutton" : "image"}
+          accessibilityLabel={`Foto de perfil de ${viewedProfile.name}`}
+          accessibilityHint={
+            viewedProfile.photoUrl ? "Toque duas vezes para ampliar" : undefined
+          }
+          accessibilityState={{ busy: saving && isOwnProfile }}
           style={({ pressed }) => [
             styles.avatarWrap,
             pressed && styles.pressed,
@@ -249,7 +289,7 @@ export default function ProfileScreen() {
           />
           {saving && isOwnProfile ? (
             <View style={styles.savingOverlay}>
-              <ActivityIndicator color={theme.primaryForeground} />
+              <ActivityIndicator color="#ffffff" />
             </View>
           ) : null}
         </Pressable>
@@ -262,6 +302,8 @@ export default function ProfileScreen() {
             <Pressable
               onPress={() => void choosePhoto()}
               disabled={saving}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: saving }}
               style={({ pressed }) => [
                 styles.primaryBtn,
                 (pressed || saving) && styles.pressed,
@@ -281,6 +323,8 @@ export default function ProfileScreen() {
               <Pressable
                 onPress={() => void removePhoto()}
                 disabled={saving}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: saving }}
                 style={({ pressed }) => [
                   styles.dangerBtn,
                   (pressed || saving) && styles.pressed,
@@ -298,6 +342,32 @@ export default function ProfileScreen() {
         ) : null}
 
         {isOwnProfile ? <ThemePicker /> : null}
+
+        {isOwnProfile ? (
+          <Pressable
+            onPress={confirmLogout}
+            disabled={loggingOut}
+            accessibilityRole="button"
+            accessibilityLabel="Sair da conta"
+            accessibilityState={{ disabled: loggingOut, busy: loggingOut }}
+            style={({ pressed }) => [
+              styles.dangerBtn,
+              styles.logoutBtn,
+              (pressed || loggingOut) && styles.pressed,
+            ]}
+          >
+            {loggingOut ? (
+              <ActivityIndicator color={theme.destructive} />
+            ) : (
+              <Ionicons
+                name="log-out-outline"
+                size={18}
+                color={theme.destructive}
+              />
+            )}
+            <Text style={styles.dangerBtnText}>Sair</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <Modal
@@ -309,14 +379,17 @@ export default function ProfileScreen() {
         <Pressable
           style={styles.photoModalRoot}
           onPress={() => setPhotoModalVisible(false)}
+          accessible={false}
         >
           <View style={styles.photoModalHeader}>
             <Pressable
               onPress={() => setPhotoModalVisible(false)}
               hitSlop={12}
               style={styles.photoClose}
+              accessibilityRole="button"
+              accessibilityLabel="Fechar foto"
             >
-              <Ionicons name="close" size={28} color={theme.primaryForeground} />
+              <Ionicons name="close" size={28} color="#ffffff" />
             </Pressable>
           </View>
           {viewedProfile.photoUrl ? (

@@ -6,22 +6,26 @@ import { prepareConversationKeyForEncryption } from "@/lib/conversationKeyReadin
 import { encryptMessageText } from "@/lib/encryptedMessages";
 import { distributeConversationKeyForChat } from "@/lib/keyDistribution";
 import {
-  ensureAudioMessageRemote,
-  ensureTextMessageRemote,
   softDeleteMessageRemote,
   updateTextMessageRemote,
 } from "@/lib/remoteMessages";
 import { ImageCacheRepository } from "@/lib/ImageCacheRepository";
 import { ImageGalleryRepository } from "@/lib/ImageGalleryRepository";
 import { processImageForUpload } from "@/lib/ImageProcessor";
-import { uploadAndPersistImage } from "@/lib/imageUpload";
 import { MessageRepository } from "@/lib/MessageRepository";
 import {
-  syncPendingAudioMessages,
-  syncPendingTextMessages,
+  handlePendingOpFailure,
+  sendTextMessage,
+  syncPendingOps,
+  uploadAudioMessage,
+  uploadImageMessage,
 } from "@/lib/offlineSync";
+import {
+  isMessageLocked,
+  tryLockMessage,
+  unlockMessage,
+} from "@/lib/outboxLocks";
 import { randomUuid } from "@/lib/randomUuid";
-import { uploadMessageAudio } from "@/src/api/media";
 import type { Message, MessageReplySnapshot } from "@/types/chat";
 import { useState } from "react";
 
@@ -32,6 +36,23 @@ export type SendableAudio =
   | ArrayBuffer;
 
 export const EDIT_DELETE_WINDOW_MS = 60 * 60 * 1000;
+
+type PendingCreateClaim = "claimed" | "in_flight" | "already_sent";
+
+async function mutatePendingCreate(
+  messageId: string,
+  mutate: () => Promise<void>
+): Promise<PendingCreateClaim> {
+  if (!tryLockMessage(messageId)) return "in_flight";
+  try {
+    const latest = await MessageRepository.getMessage(messageId);
+    if (!latest || latest.status === "sent") return "already_sent";
+    await mutate();
+    return "claimed";
+  } finally {
+    unlockMessage(messageId);
+  }
+}
 
 export function useSendMessage(chatId: string) {
   const { currentUser, tenantId, deviceId } = useAuth();
@@ -64,29 +85,7 @@ export function useSendMessage(chatId: string) {
         timestamp: createdAt,
       });
       if (!isOnline) return;
-      await prepareConversationKeyForEncryption(chatId, deviceId, {
-        canCreate: currentUser.role === "adult",
-      });
-      await distributeConversationKeyForChat(chatId);
-      const enc = await encryptMessageText(chatId, trimmed);
-      if (!enc) {
-        return;
-      }
-      await ensureTextMessageRemote({
-        chatId,
-        messageId,
-        tenantId,
-        senderId: currentUser.id,
-        ciphertext: enc.ciphertext,
-        iv: enc.iv,
-        replyTo: options?.replyTo ?? null,
-      });
-      await MessageRepository.updateEncryptedPayload(messageId, {
-        ciphertext: enc.ciphertext,
-        iv: enc.iv,
-        encVersion: 1,
-      });
-      await MessageRepository.updateStatus(messageId, "sent");
+      await sendTextMessage(messageId, currentUser, tenantId, deviceId);
     } catch {
       // Keep the local message pending. The offline sync will retry it.
     } finally {
@@ -131,36 +130,12 @@ export function useSendMessage(chatId: string) {
         return;
       }
 
-      await ensureAudioMessageRemote({
-        chatId,
-        messageId,
-        tenantId,
-        senderId: currentUser.id,
-        audioUrl: null,
-        audioDuration: options?.duration ?? null,
-        replyTo: options?.replyTo ?? null,
-      });
-      const uploaded = await uploadMessageAudio(chatId, messageId, audio, {
+      const audioUrl = await uploadAudioMessage(messageId, currentUser, tenantId, {
+        audio,
         extension: options?.extension,
         contentType: options?.contentType,
       });
-      const audioUrl = uploaded.url;
-      if (!audioUrl) {
-        throw new Error("Audio upload completed without a remote URL.");
-      }
-      await MessageRepository.insertLocalMessage({
-        id: messageId,
-        conversationId: chatId,
-        senderId: currentUser.id,
-        body: audioUrl,
-        type: "audio",
-        status: "sent",
-        createdAt: sentAt,
-        syncedAt: new Date(),
-        localAudioUri: options?.localUri ?? null,
-        audioDuration: options?.duration ?? null,
-        replyTo: options?.replyTo ?? null,
-      });
+      if (!audioUrl) return;
       void AudioCacheRepository.downloadMessageAudio({
         chatId,
         messageId,
@@ -227,17 +202,7 @@ export function useSendMessage(chatId: string) {
 
       if (!isOnline) return;
 
-      await uploadAndPersistImage({
-        chatId,
-        messageId,
-        tenantId,
-        senderId: currentUser.id,
-        imageUri: processed.uri,
-        imageWidth: processed.width,
-        imageHeight: processed.height,
-        imageFileSize: processed.fileSize,
-        replyTo: options?.replyTo ?? null,
-      });
+      await uploadImageMessage(messageId, currentUser, tenantId, processed.uri);
     } catch {
       await MessageRepository.updateStatus(messageId, "failed").catch(() => {});
     } finally {
@@ -249,7 +214,7 @@ export function useSendMessage(chatId: string) {
     if (!currentUser || !tenantId || !isOnline) return;
     if (message.type !== "audio") return;
     if (!message.audioLocalUri) return;
-    await syncPendingAudioMessages(currentUser, tenantId, isOnline);
+    await uploadAudioMessage(message.id, currentUser, tenantId);
   };
 
   const retryImageMessage = async (message: Message) => {
@@ -257,23 +222,18 @@ export function useSendMessage(chatId: string) {
     if (message.type !== "image") return;
     const sourceUri = message.imagePendingSourceUri ?? message.imageLocalUri;
     if (!sourceUri) return;
+    await uploadImageMessage(message.id, currentUser, tenantId);
+  };
 
-    await MessageRepository.updateStatus(message.id, "loading");
-    try {
-      await uploadAndPersistImage({
-        chatId,
-        messageId: message.id,
-        tenantId,
-        senderId: currentUser.id,
-        imageUri: sourceUri,
-        imageWidth: message.imageWidth ?? 0,
-        imageHeight: message.imageHeight ?? 0,
-        imageFileSize: message.imageFileSize ?? 0,
-        replyTo: message.replyTo ?? null,
-      });
-    } catch {
-      await MessageRepository.updateStatus(message.id, "failed").catch(() => {});
-    }
+  const retryTextMessage = async (message: Message) => {
+    if (!currentUser || !tenantId || !isOnline) return;
+    if (message.type !== "text" || message.status !== "failed") return;
+    await sendTextMessage(message.id, currentUser, tenantId, deviceId);
+  };
+
+  const flushOpRecordedDuringCreate = (messageId: string) => {
+    if (!currentUser || !isOnline || isMessageLocked(messageId)) return;
+    void syncPendingOps(currentUser, isOnline, deviceId);
   };
 
   const canModifyMessage = (message: Message): boolean => {
@@ -294,12 +254,18 @@ export function useSendMessage(chatId: string) {
     const trimmed = newText.trim();
     if (!trimmed || trimmed === message.content) return false;
 
-    if (message.status === "loading") {
-      await MessageRepository.overwritePendingCreateBody(message.id, trimmed);
-      if (isOnline) {
-        void syncPendingTextMessages(currentUser, tenantId, isOnline, deviceId);
+    let createInFlight = false;
+    if (message.status !== "sent") {
+      const claim = await mutatePendingCreate(message.id, () =>
+        MessageRepository.overwritePendingCreateBody(message.id, trimmed)
+      );
+      if (claim === "claimed") {
+        if (isOnline) {
+          void sendTextMessage(message.id, currentUser, tenantId, deviceId);
+        }
+        return true;
       }
-      return true;
+      createInFlight = claim === "in_flight";
     }
 
     const editedAt = new Date();
@@ -310,6 +276,10 @@ export function useSendMessage(chatId: string) {
       preserveOriginal: !message.isEdited,
     });
 
+    if (createInFlight) {
+      flushOpRecordedDuringCreate(message.id);
+      return true;
+    }
     if (!isOnline) return true;
     try {
       await prepareConversationKeyForEncryption(message.chatId, deviceId, {
@@ -330,8 +300,8 @@ export function useSendMessage(chatId: string) {
         encVersion: 1,
       });
       await MessageRepository.clearPendingOp(message.id);
-    } catch {
-      await MessageRepository.incrementEditAttempts(message.id).catch(() => {});
+    } catch (error) {
+      await handlePendingOpFailure(message.id, error).catch(() => {});
     }
     return true;
   };
@@ -342,13 +312,17 @@ export function useSendMessage(chatId: string) {
 
     const deletedAt = new Date();
 
-    if (message.status === "loading") {
-      await MessageRepository.markAsDeleted(message.id, {
-        deletedAt,
-        pendingOp: null,
+    let createInFlight = false;
+    if (message.status !== "sent") {
+      const claim = await mutatePendingCreate(message.id, async () => {
+        await MessageRepository.markAsDeleted(message.id, {
+          deletedAt,
+          pendingOp: null,
+        });
+        await MessageRepository.cancelPendingCreate(message.id);
       });
-      await MessageRepository.cancelPendingCreate(message.id);
-      return true;
+      if (claim === "claimed") return true;
+      createInFlight = claim === "in_flight";
     }
 
     await MessageRepository.markAsDeleted(message.id, {
@@ -356,6 +330,10 @@ export function useSendMessage(chatId: string) {
       pendingOp: "delete",
     });
 
+    if (createInFlight) {
+      flushOpRecordedDuringCreate(message.id);
+      return true;
+    }
     if (!isOnline) return true;
     try {
       await softDeleteMessageRemote({
@@ -363,8 +341,8 @@ export function useSendMessage(chatId: string) {
         messageId: message.id,
       });
       await MessageRepository.clearPendingOp(message.id);
-    } catch {
-      await MessageRepository.incrementEditAttempts(message.id).catch(() => {});
+    } catch (error) {
+      await handlePendingOpFailure(message.id, error).catch(() => {});
     }
     return true;
   };
@@ -375,6 +353,7 @@ export function useSendMessage(chatId: string) {
     sendImage,
     retryAudioMessage,
     retryImageMessage,
+    retryTextMessage,
     editTextMessage,
     deleteMessage,
     canModifyMessage,

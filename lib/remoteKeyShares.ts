@@ -5,7 +5,6 @@ import type { KeyShareDoc } from "@/types/chat";
 export async function writeKeyShare(
   deviceId: string,
   chatId: string,
-  _wrappedBy: string,
   share: WrappedKey,
 ): Promise<void> {
   await cryptoApi.putKeyShare(deviceId, chatId, {
@@ -64,8 +63,6 @@ export async function listKeyShares(
         ephemeralPublicKey: share.ephemeral_public_key,
         iv: share.iv,
         ciphertext: share.ciphertext,
-        wrappedBy: "",
-        createdAt: new Date().toISOString(),
       },
     }));
     cache = { deviceId, fetchedAt: Date.now(), shares: mapped };

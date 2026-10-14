@@ -1,5 +1,12 @@
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import {
+  fontSizes,
+  fontWeights,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -8,59 +15,60 @@ type EditPreviewProps = {
   onCancel: () => void;
 };
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    wrap: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: radius.md,
+      backgroundColor: t.background,
+      borderWidth: 1,
+      borderColor: t.border,
+      marginBottom: spacing.sm,
+      overflow: "hidden",
+    },
+    accent: {
+      alignSelf: "stretch",
+      width: 3,
+      backgroundColor: t.accent,
+    },
+    content: {
+      flex: 1,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    textColumn: {
+      flex: 1,
+    },
+    label: {
+      fontSize: fontSizes.footnote,
+      fontWeight: fontWeights.bold,
+      color: t.accent,
+    },
+    preview: {
+      marginTop: spacing.xxs,
+      fontSize: fontSizes.subhead,
+      color: t.mutedForeground,
+    },
+    cancelButton: {
+      width: 36,
+      height: 36,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: spacing.xs,
+      borderRadius: radius.pill,
+    },
+    cancelButtonPressed: {
+      backgroundColor: t.muted,
+    },
+  });
+
 export function EditPreview({ originalText, onCancel }: EditPreviewProps) {
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      wrap: {
-        flexDirection: "row",
-        alignItems: "center",
-        borderRadius: 12,
-        backgroundColor: t.background,
-        borderWidth: 1,
-        borderColor: t.border,
-        marginBottom: 8,
-        overflow: "hidden",
-      },
-      accent: {
-        alignSelf: "stretch",
-        width: 3,
-        backgroundColor: t.accent,
-      },
-      content: {
-        flex: 1,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-      },
-      textColumn: {
-        flex: 1,
-      },
-      label: {
-        fontSize: 12,
-        fontWeight: "700",
-        color: t.accent,
-      },
-      preview: {
-        marginTop: 2,
-        fontSize: 13,
-        color: t.mutedForeground,
-      },
-      cancelButton: {
-        width: 36,
-        height: 36,
-        alignItems: "center",
-        justifyContent: "center",
-        marginRight: 4,
-        borderRadius: 18,
-      },
-      cancelButtonPressed: {
-        backgroundColor: t.muted,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.wrap}>
       <View style={styles.accent} />

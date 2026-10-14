@@ -1,13 +1,20 @@
-import { AppHeader } from "@/components/AppHeader";
 import { ChatBubble } from "@/components/ChatBubble";
 import { ChatInput, type ChatInputHandle } from "@/components/ChatInput";
-import { ProfileAvatar } from "@/components/ProfileAvatar";
-import { ReactionMenu } from "@/components/ReactionMenu";
+import { ImageViewer } from "@/components/ImageViewer";
 import { ReactionsDialog } from "@/components/ReactionsDialog";
+import { useToast } from "@/components/Toast";
+import { ChatHeader } from "@/components/chat/ChatHeader";
+import { DaySeparator } from "@/components/chat/DaySeparator";
+import {
+  MessageActionsMenu,
+  type MessageActionsTarget,
+} from "@/components/chat/MessageActionsMenu";
 import { useAuth } from "@/context/AuthContext";
 import { useChatReadReceipts } from "@/hooks/useChatReadReceipts";
 import { useChat } from "@/hooks/useChat";
+import { useChatJump } from "@/hooks/useChatJump";
 import { useConnectivity } from "@/hooks/useConnectivity";
+import { useDayBadge } from "@/hooks/useDayBadge";
 import { useMemberProfiles } from "@/hooks/useMemberProfiles";
 import { useMessages } from "@/hooks/useMessages";
 import { useReactions } from "@/hooks/useReactions";
@@ -20,20 +27,30 @@ import {
   getChatDisplayName,
   isOtherParticipantDeleted,
 } from "@/lib/chatDisplayName";
+import { buildChatListItems, type ChatListItem } from "@/lib/chatListItems";
+import { lightImpact } from "@/lib/haptics";
 import { createReplySnapshot } from "@/lib/messageReply";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
-import type { Message, MessageReplySnapshot } from "@/types/chat";
+import {
+  fontSizes,
+  fontWeights,
+  maxFontScale,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
+import type { Message, MessageReplySnapshot, Reaction } from "@/types/chat";
 import { Ionicons } from "@expo/vector-icons";
 import type { LocalTimestamp } from "@/lib/localTimestamp";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   FlatList,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
+  ListRenderItemInfo,
   Pressable,
   StyleSheet,
   Text,
@@ -44,24 +61,13 @@ import {
   useKeyboardState,
 } from "react-native-keyboard-controller";
 
-interface DaySeparatorItem {
-  id: string;
-  type: "separator";
-  date: Date;
-  dayKey: string;
+const EMPTY_REACTIONS: Reaction[] = [];
+const EMPTY_PARTICIPANTS: string[] = [];
+const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 35 };
+
+function keyExtractor(item: ChatListItem): string {
+  return item.id;
 }
-
-interface MessageItem {
-  id: string;
-  type: "message";
-  message: Message;
-  dayKey: string;
-}
-
-type ChatListItem = DaySeparatorItem | MessageItem;
-
-const SHOW_JUMP_TO_LATEST_OFFSET = 120;
-const HIDE_JUMP_TO_LATEST_OFFSET = 48;
 
 function readReceiptStatus(
   message: Message,
@@ -82,29 +88,100 @@ function readReceiptStatus(
   return allRead ? "read" : "sent";
 }
 
-function getDayKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
-
-function formatDayLabel(date: Date): string {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const target = new Date(date);
-  target.setHours(0, 0, 0, 0);
-
-  const diffMs = today.getTime() - target.getTime();
-  const diffDays = Math.round(diffMs / 86400000);
-
-  if (diffDays === 0) return "Hoje";
-  if (diffDays === 1) return "Ontem";
-
-  return target.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: t.chatBg,
+    },
+    messagesWrap: {
+      flex: 1,
+    },
+    listContent: {
+      paddingVertical: spacing.lg,
+      gap: spacing.sm,
+    },
+    listContentEmpty: {
+      flexGrow: 1,
+    },
+    emptyState: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
+      paddingHorizontal: spacing.xxxl,
+      transform: [{ scaleY: -1 }],
+    },
+    emptyTitle: {
+      fontSize: fontSizes.body,
+      fontWeight: fontWeights.semibold,
+      color: t.foreground,
+      textAlign: "center",
+    },
+    emptySubtitle: {
+      fontSize: fontSizes.subhead,
+      color: t.mutedForeground,
+      textAlign: "center",
+    },
+    loadingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    dayBadge: {
+      position: "absolute",
+      top: spacing.sm,
+      alignSelf: "center",
+      backgroundColor: t.chatHeader,
+      borderRadius: radius.pill,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      zIndex: 2,
+    },
+    dayBadgeText: {
+      color: t.chatHeaderForeground,
+      fontSize: fontSizes.footnote,
+      fontWeight: fontWeights.bold,
+      textTransform: "capitalize",
+    },
+    jumpToLatestButton: {
+      position: "absolute",
+      right: spacing.lg,
+      bottom: spacing.lg,
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: t.primary,
+      shadowColor: t.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: t.shadowOpacity * 2,
+      shadowRadius: 4,
+      elevation: 4,
+      zIndex: 3,
+    },
+    jumpToLatestButtonPressed: {
+      opacity: 0.85,
+    },
+    readOnlyBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
+      paddingVertical: spacing.lg,
+      paddingHorizontal: spacing.lg,
+      backgroundColor: t.muted,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: t.border,
+    },
+    readOnlyBannerText: {
+      flexShrink: 1,
+      fontSize: fontSizes.subhead,
+      color: t.mutedForeground,
+      textAlign: "center",
+    },
   });
-}
 
 export default function ChatScreen() {
   const { chatId, messageId: deepLinkMessageId } = useLocalSearchParams<{
@@ -114,95 +191,14 @@ export default function ChatScreen() {
   const router = useRouter();
   const { currentUser } = useAuth();
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      screen: {
-        flex: 1,
-        backgroundColor: t.chatBg,
-      },
-      messagesWrap: {
-        flex: 1,
-      },
-      listContent: {
-        paddingVertical: 16,
-        gap: 8,
-      },
-      separatorWrap: {
-        flexDirection: "row",
-        marginVertical: 12,
-        paddingHorizontal: 14,
-      },
-      separatorLine: {
-        flex: 1,
-        height: 1,
-        backgroundColor: t.border,
-      },
-      separatorText: {
-        marginHorizontal: 10,
-        fontSize: 12,
-        fontWeight: "600",
-        color: t.timestamp,
-        textTransform: "capitalize",
-      },
-      dayBadge: {
-        position: "absolute",
-        top: 8,
-        alignSelf: "center",
-        backgroundColor: t.chatHeader,
-        borderRadius: 999,
-        paddingHorizontal: 14,
-        paddingVertical: 6,
-        zIndex: 2,
-      },
-      dayBadgeText: {
-        color: t.chatHeaderForeground,
-        fontSize: 12,
-        fontWeight: "700",
-        textTransform: "capitalize",
-      },
-      jumpToLatestButton: {
-        position: "absolute",
-        right: 18,
-        bottom: 18,
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: t.primary,
-        shadowColor: t.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: t.shadowOpacity * 2,
-        shadowRadius: 4,
-        elevation: 4,
-        zIndex: 3,
-      },
-      jumpToLatestButtonPressed: {
-        opacity: 0.85,
-      },
-      readOnlyBanner: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        paddingVertical: 14,
-        paddingHorizontal: 16,
-        backgroundColor: t.muted,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: t.border,
-      },
-      readOnlyBannerText: {
-        flexShrink: 1,
-        fontSize: 13,
-        color: t.mutedForeground,
-        textAlign: "center",
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
+  const { showToast } = useToast();
   const currentUserId = currentUser?.id;
   const { isOnline } = useConnectivity();
   const chat = useChat(chatId ?? "");
-  const { messages, loading } = useMessages(chatId ?? "");
+  const { messages, loading, loadOlder, revealMessage } = useMessages(chatId ?? "", {
+    focusMessageId: deepLinkMessageId,
+  });
   const { reactions, reactToMessage } = useReactions(chatId ?? "");
   const memberProfiles = useMemberProfiles();
   const visibleMessages = useMemo(
@@ -216,7 +212,8 @@ export default function ChatScreen() {
     memberProfiles
   );
   const headerTitle = isOtherDeleted ? `${chatTitle} · Excluído` : chatTitle;
-  const participants = chat?.participants ?? [];
+  const isGroupChat = chat?.isGroup === true;
+  const participants = chat?.participants ?? EMPTY_PARTICIPANTS;
   const { readUpTo } = useChatReadReceipts(
     chatId ?? "",
     visibleMessages,
@@ -225,43 +222,24 @@ export default function ChatScreen() {
   const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
   const inputRef = useRef<ChatInputHandle>(null);
   const listRef = useRef<FlatList<ChatListItem>>(null);
-  const badgeOpacity = useRef(new Animated.Value(0)).current;
-  const hasScrolledRef = useRef(false);
-  const visibleDayLabelRef = useRef("");
-  const hideBadgeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingScrollIndexRef = useRef<number | null>(null);
 
   const {
     retryImageMessage,
     retryAudioMessage,
+    retryTextMessage,
     deleteMessage,
     canModifyMessage,
   } = useSendMessage(chatId);
 
-  const [activeDayLabel, setActiveDayLabel] = useState<string>("");
   const [activeAudioMessageId, setActiveAudioMessageId] = useState<string | null>(null);
   const [audioPlaybackRate, setAudioPlaybackRate] = useState<1 | 1.5 | 2>(1);
-  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [replyTo, setReplyTo] = useState<MessageReplySnapshot | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
-  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
 
-  const [reactionTarget, setReactionTarget] = useState<{
-    messageId: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
+  const [reactionTarget, setReactionTarget] = useState<MessageActionsTarget | null>(null);
   const [reactionsDialogMessageId, setReactionsDialogMessageId] = useState<string | null>(null);
-
-  const messagesWithReactions = useMemo<Message[]>(() => {
-    return visibleMessages.map((msg) => ({
-      ...msg,
-      reactions: reactions[msg.id] ?? [],
-    }));
-  }, [visibleMessages, reactions]);
 
   const audioSequenceMap = useMemo(() => {
     const sequence = new Map<string, string | undefined>();
@@ -291,7 +269,8 @@ export default function ChatScreen() {
     setActiveAudioMessageId(null);
     setReplyTo(null);
     setEditingMessage(null);
-    setHighlightedMessageId(null);
+    setImageViewerVisible(false);
+    setViewerImageUri(null);
   }, [chatId]);
 
   useEffect(() => {
@@ -307,58 +286,29 @@ export default function ChatScreen() {
     }
   }, [editingMessage, messagesById]);
 
-  const chatListData = useMemo<ChatListItem[]>(() => {
-    const ordered = [...messagesWithReactions].reverse();
-    const list: ChatListItem[] = [];
+  const chatListData = useMemo<ChatListItem[]>(
+    () => buildChatListItems(visibleMessages),
+    [visibleMessages]
+  );
 
-    ordered.forEach((message, index) => {
-      const currentDayKey = getDayKey(message.timestamp);
+  const {
+    activeDayLabel,
+    badgeOpacity,
+    showJumpToLatest,
+    handleScrollActivity,
+    handleScrollPositionSettled,
+    handleUserScrollStart,
+    handleViewableItemsChanged,
+  } = useDayBadge(chatId, chatListData);
 
-      list.push({
-        id: message.id,
-        type: "message",
-        message,
-        dayKey: currentDayKey,
-      });
-
-      const nextDayKey =
-        index < ordered.length - 1 ? getDayKey(ordered[index + 1].timestamp) : null;
-
-      if (currentDayKey !== nextDayKey) {
-        list.push({
-          id: `separator-${currentDayKey}`,
-          type: "separator",
-          dayKey: currentDayKey,
-          date: message.timestamp,
-        });
-      }
+  const { highlightedMessageId, jumpToMessage, handleScrollToIndexFailed } =
+    useChatJump({
+      chatId,
+      chatListData,
+      deepLinkMessageId,
+      listRef,
+      revealMessage,
     });
-
-    return list;
-  }, [messagesWithReactions]);
-
-  useEffect(() => {
-    setActiveDayLabel("");
-    visibleDayLabelRef.current = "";
-    badgeOpacity.setValue(0);
-    hasScrolledRef.current = false;
-    setShowJumpToLatest(false);
-    if (hideBadgeTimeoutRef.current) {
-      clearTimeout(hideBadgeTimeoutRef.current);
-      hideBadgeTimeoutRef.current = null;
-    }
-  }, [badgeOpacity, chatId]);
-
-  useEffect(() => {
-    return () => {
-      if (hideBadgeTimeoutRef.current) {
-        clearTimeout(hideBadgeTimeoutRef.current);
-      }
-      if (highlightTimeoutRef.current) {
-        clearTimeout(highlightTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const keepComposerFocused = useCallback(() => {
     if (!isKeyboardVisible) return;
@@ -369,91 +319,6 @@ export default function ChatScreen() {
       inputRef.current?.focus();
     }, 50);
   }, [isKeyboardVisible]);
-
-  const showBadge = useCallback(() => {
-    if (!hasScrolledRef.current) return;
-    Animated.timing(badgeOpacity, {
-      toValue: 1,
-      duration: 160,
-      useNativeDriver: true,
-    }).start();
-  }, [badgeOpacity]);
-
-  const scheduleBadgeHide = useCallback(() => {
-    if (hideBadgeTimeoutRef.current) {
-      clearTimeout(hideBadgeTimeoutRef.current);
-    }
-
-    hideBadgeTimeoutRef.current = setTimeout(() => {
-      Animated.timing(badgeOpacity, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }).start();
-      hideBadgeTimeoutRef.current = null;
-    }, 2000);
-  }, [badgeOpacity]);
-
-  const syncJumpToLatestVisibility = useCallback((offsetY: number) => {
-    setShowJumpToLatest((current) => {
-      if (current) {
-        return offsetY >= HIDE_JUMP_TO_LATEST_OFFSET;
-      }
-
-      return offsetY > SHOW_JUMP_TO_LATEST_OFFSET;
-    });
-  }, []);
-
-  const handleScrollActivity = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      syncJumpToLatestVisibility(event.nativeEvent.contentOffset.y);
-
-      if (!hasScrolledRef.current) return;
-      showBadge();
-      scheduleBadgeHide();
-    },
-    [scheduleBadgeHide, showBadge, syncJumpToLatestVisibility]
-  );
-
-  const handleScrollPositionSettled = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      syncJumpToLatestVisibility(event.nativeEvent.contentOffset.y);
-    },
-    [syncJumpToLatestVisibility]
-  );
-
-  const handleUserScrollStart = useCallback(() => {
-    hasScrolledRef.current = true;
-    if (visibleDayLabelRef.current) {
-      setActiveDayLabel(visibleDayLabelRef.current);
-    }
-    showBadge();
-    scheduleBadgeHide();
-  }, [scheduleBadgeHide, showBadge]);
-
-  const animateBadgeChange = useCallback((nextLabel: string) => {
-    if (!hasScrolledRef.current) return;
-    setActiveDayLabel((current) => {
-      if (!nextLabel) return current;
-      if (nextLabel === current) {
-        showBadge();
-        return current;
-      }
-      Animated.sequence([
-        Animated.timing(badgeOpacity, {
-          toValue: 0,
-          duration: 140,
-          useNativeDriver: true,
-        }),
-        Animated.timing(badgeOpacity, {
-          toValue: 1,
-          duration: 180,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      return nextLabel;
-    });
-  }, [badgeOpacity, showBadge]);
 
   const jumpToLatestMessages = useCallback(() => {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -529,67 +394,19 @@ export default function ChatScreen() {
   const handleCopyMessage = useCallback(async (message: Message) => {
     if (message.type !== "text" || !message.content) return;
     await Clipboard.setStringAsync(message.content);
-  }, []);
+    showToast("Mensagem copiada");
+  }, [showToast]);
 
-  const highlightMessage = useCallback((messageId: string) => {
-    setHighlightedMessageId(messageId);
-    if (highlightTimeoutRef.current) {
-      clearTimeout(highlightTimeoutRef.current);
-    }
-    highlightTimeoutRef.current = setTimeout(() => {
-      setHighlightedMessageId((current) =>
-        current === messageId ? null : current
-      );
-      highlightTimeoutRef.current = null;
-    }, 1600);
-  }, []);
-
-  const jumpToMessage = useCallback(
-    (messageId: string) => {
-      const index = chatListData.findIndex(
-        (entry) => entry.type === "message" && entry.message.id === messageId
-      );
-      if (index < 0) return;
-
-      pendingScrollIndexRef.current = index;
-      listRef.current?.scrollToIndex({
-        index,
-        animated: true,
-        viewPosition: 0.5,
-      });
-      highlightMessage(messageId);
+  const handleCopyMessageAction = useCallback(
+    (message: Message) => {
+      void handleCopyMessage(message);
     },
-    [chatListData, highlightMessage]
+    [handleCopyMessage]
   );
-
-  const pendingDeepLinkMessageIdRef = useRef<string | null>(null);
-  const consumedDeepLinkRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (typeof deepLinkMessageId !== "string" || deepLinkMessageId.length === 0) {
-      return;
-    }
-    if (consumedDeepLinkRef.current === deepLinkMessageId) return;
-    pendingDeepLinkMessageIdRef.current = deepLinkMessageId;
-  }, [deepLinkMessageId]);
-
-  useEffect(() => {
-    const target = pendingDeepLinkMessageIdRef.current;
-    if (!target) return;
-    const exists = chatListData.some(
-      (entry) => entry.type === "message" && entry.message.id === target
-    );
-    if (!exists) return;
-    const handle = setTimeout(() => {
-      jumpToMessage(target);
-      consumedDeepLinkRef.current = target;
-      pendingDeepLinkMessageIdRef.current = null;
-    }, 120);
-    return () => clearTimeout(handle);
-  }, [chatListData, jumpToMessage]);
 
   const handleReactionPress = useCallback(
     (messageId: string, x: number, y: number, width: number, height: number) => {
+      lightImpact();
       setReactionTarget({ messageId, x, y, width, height });
     },
     []
@@ -604,12 +421,32 @@ export default function ChatScreen() {
     [reactionTarget, reactToMessage]
   );
 
-  const handleReactionChipPress = useCallback(
-    (messageId: string) => () => {
-      setReactionsDialogMessageId(messageId);
+  const openReactionsDialog = useCallback((messageId: string) => {
+    setReactionsDialogMessageId(messageId);
+  }, []);
+
+  const handleAudioFinished = useCallback((nextMessageId?: string) => {
+    setActiveAudioMessageId(nextMessageId ?? null);
+  }, []);
+
+  const openMemberProfile = useCallback(
+    (memberId: string) => {
+      router.push({
+        pathname: "/profile",
+        params: { memberId },
+      });
     },
-    []
+    [router]
   );
+
+  const openImageViewer = useCallback((uri: string) => {
+    setViewerImageUri(uri);
+    setImageViewerVisible(true);
+  }, []);
+
+  const closeImageViewer = useCallback(() => {
+    setImageViewerVisible(false);
+  }, []);
 
   const closeReactionMenu = useCallback(() => {
     setReactionTarget(null);
@@ -644,8 +481,99 @@ export default function ChatScreen() {
   }, [memberProfiles]);
 
   const dialogReactions = reactionsDialogMessageId
-    ? (reactions[reactionsDialogMessageId] ?? [])
-    : [];
+    ? (reactions[reactionsDialogMessageId] ?? EMPTY_REACTIONS)
+    : EMPTY_REACTIONS;
+
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<ChatListItem>) => {
+      if (item.type === "separator") {
+        return <DaySeparator label={item.label} />;
+      }
+
+      const message = item.message;
+      const showSender = isGroupChat && message.senderId !== currentUserId;
+
+      return (
+        <ChatBubble
+          message={message}
+          isSelf={message.senderId === currentUserId}
+          isOnline={isOnline}
+          shouldPlay={activeAudioMessageId === message.id}
+          nextInSequenceId={audioSequenceMap.get(message.id)}
+          playbackRate={audioPlaybackRate}
+          onRequestPlay={setActiveAudioMessageId}
+          onAudioFinished={handleAudioFinished}
+          onPlaybackRateChange={setAudioPlaybackRate}
+          senderName={
+            showSender
+              ? memberProfiles[message.senderId]?.name ?? "Participante"
+              : undefined
+          }
+          senderPhotoUrl={
+            showSender
+              ? memberProfiles[message.senderId]?.photoUrl ?? null
+              : null
+          }
+          readReceipt={readReceiptStatus(
+            message,
+            currentUserId,
+            participants,
+            readUpTo
+          )}
+          reactions={reactions[message.id] ?? EMPTY_REACTIONS}
+          currentUserId={currentUserId}
+          onReactionPress={isOtherDeleted ? undefined : handleReactionPress}
+          onReactionChipPress={isOtherDeleted ? undefined : openReactionsDialog}
+          onReply={isOtherDeleted ? undefined : handleReplySelect}
+          onCopy={handleCopyMessageAction}
+          onEdit={isOtherDeleted ? undefined : handleEditPress}
+          onDelete={isOtherDeleted ? undefined : handleDeletePress}
+          canModify={
+            message.senderId === currentUserId && canModifyMessage(message)
+          }
+          onRetryImage={isOtherDeleted ? undefined : retryImageMessage}
+          onRetryAudio={isOtherDeleted ? undefined : retryAudioMessage}
+          onRetryText={isOtherDeleted ? undefined : retryTextMessage}
+          highlighted={highlightedMessageId === message.id}
+          replyAvailable={
+            !message.replyTo || messagesById.has(message.replyTo.id)
+          }
+          onQuotedReplyPress={jumpToMessage}
+          onSenderPress={showSender ? openMemberProfile : undefined}
+          onOpenImage={openImageViewer}
+        />
+      );
+    },
+    [
+      activeAudioMessageId,
+      audioPlaybackRate,
+      audioSequenceMap,
+      canModifyMessage,
+      currentUserId,
+      handleAudioFinished,
+      handleCopyMessageAction,
+      handleDeletePress,
+      handleEditPress,
+      handleReactionPress,
+      handleReplySelect,
+      highlightedMessageId,
+      isGroupChat,
+      isOnline,
+      isOtherDeleted,
+      jumpToMessage,
+      memberProfiles,
+      messagesById,
+      openImageViewer,
+      openMemberProfile,
+      openReactionsDialog,
+      participants,
+      reactions,
+      readUpTo,
+      retryAudioMessage,
+      retryImageMessage,
+      retryTextMessage,
+    ]
+  );
 
   if (!chatId || !currentUserId) {
     return null;
@@ -654,35 +582,26 @@ export default function ChatScreen() {
   return (
     <View style={{ flex: 1 }}>
       <KeyboardAvoidingView behavior="padding" style={styles.screen}>
-      <AppHeader
-        title={headerTitle}
+      <ChatHeader
+        chat={chat}
+        currentUserId={currentUserId}
+        memberProfiles={memberProfiles}
+        chatTitle={chatTitle}
+        headerTitle={headerTitle}
         onBack={() => router.back()}
-        leading={(() => {
-          const otherId =
-            chat && !chat.isGroup
-              ? chat.participants.find((id) => id !== currentUserId)
-              : undefined;
-          const otherProfile = otherId ? memberProfiles[otherId] : undefined;
-          const photoUrl = chat?.isGroup
-            ? chat?.photoUrl ?? undefined
-            : otherProfile?.photoUrl ?? undefined;
-          const icon: keyof typeof Ionicons.glyphMap = chat?.isGroup
-            ? "people-outline"
-            : "chatbubble-outline";
-          return (
-            <ProfileAvatar
-              name={otherProfile?.name ?? chatTitle}
-              photoUrl={photoUrl}
-              icon={icon}
-              size={32}
-            />
-          );
-        })()}
       />
       <View style={styles.messagesWrap}>
         {activeDayLabel ? (
-          <Animated.View style={[styles.dayBadge, { opacity: badgeOpacity }]}>
-            <Text style={styles.dayBadgeText}>{activeDayLabel}</Text>
+          <Animated.View
+            style={[styles.dayBadge, { opacity: badgeOpacity }]}
+            pointerEvents="none"
+          >
+            <Text
+              style={styles.dayBadgeText}
+              maxFontSizeMultiplier={maxFontScale.compact}
+            >
+              {activeDayLabel}
+            </Text>
           </Animated.View>
         ) : null}
         <FlatList
@@ -690,8 +609,28 @@ export default function ChatScreen() {
           key={chatId}
           inverted
           data={chatListData}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          onEndReached={() => void loadOlder()}
+          onEndReachedThreshold={0.5}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={[
+            styles.listContent,
+            chatListData.length === 0 && styles.listContentEmpty,
+          ]}
+          ListEmptyComponent={
+            loading ? null : (
+              <View style={styles.emptyState}>
+                <Ionicons
+                  name="chatbubbles-outline"
+                  size={40}
+                  color={theme.mutedForeground}
+                />
+                <Text style={styles.emptyTitle}>Nenhuma mensagem ainda</Text>
+                <Text style={styles.emptySubtitle}>
+                  Envie a primeira mensagem para começar a conversa.
+                </Text>
+              </View>
+            )
+          }
           keyboardDismissMode="none"
           keyboardShouldPersistTaps="always"
           onTouchStart={keepComposerFocused}
@@ -700,115 +639,25 @@ export default function ChatScreen() {
           onScroll={handleScrollActivity}
           onScrollEndDrag={handleScrollPositionSettled}
           onMomentumScrollEnd={handleScrollPositionSettled}
-          onScrollToIndexFailed={(info) => {
-            listRef.current?.scrollToOffset({
-              offset: info.averageItemLength * info.index,
-              animated: true,
-            });
-            const retryIndex = pendingScrollIndexRef.current;
-            if (retryIndex == null) return;
-            setTimeout(() => {
-              listRef.current?.scrollToIndex({
-                index: retryIndex,
-                animated: true,
-                viewPosition: 0.5,
-              });
-            }, 80);
-          }}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
           scrollEventThrottle={16}
-          onViewableItemsChanged={({ viewableItems }) => {
-            const firstVisible = viewableItems.find(
-              (entry) => entry.item.type === "message" || entry.item.type === "separator"
-            )?.item;
-
-            if (!firstVisible) return;
-
-            const dayKey = firstVisible.dayKey;
-            const separator = chatListData.find(
-              (entry) => entry.type === "separator" && entry.dayKey === dayKey
-            ) as DaySeparatorItem | undefined;
-
-            if (separator) {
-              const nextLabel = formatDayLabel(separator.date);
-              visibleDayLabelRef.current = nextLabel;
-              animateBadgeChange(nextLabel);
-            }
-          }}
-          viewabilityConfig={{ itemVisiblePercentThreshold: 35 }}
-          renderItem={({ item }) => {
-            if (item.type === "separator") {
-              return (
-                <View style={styles.separatorWrap}>
-                  <View style={styles.separatorLine} />
-                  <Text style={styles.separatorText}>{formatDayLabel(item.date)}</Text>
-                  <View style={styles.separatorLine} />
-                </View>
-              );
-            }
-
-            return (
-              <ChatBubble
-                message={item.message}
-                isSelf={item.message.senderId === currentUserId}
-                isOnline={isOnline}
-                shouldPlay={activeAudioMessageId === item.message.id}
-                nextInSequenceId={audioSequenceMap.get(item.message.id)}
-                playbackRate={audioPlaybackRate}
-                onRequestPlay={setActiveAudioMessageId}
-                onAudioFinished={(nextMessageId) => {
-                  setActiveAudioMessageId(nextMessageId ?? null);
-                }}
-                onPlaybackRateChange={setAudioPlaybackRate}
-                senderName={
-                  chat?.isGroup && item.message.senderId !== currentUserId
-                    ? memberProfiles[item.message.senderId]?.name ?? "Participante"
-                    : undefined
-                }
-                senderPhotoUrl={
-                  chat?.isGroup && item.message.senderId !== currentUserId
-                    ? memberProfiles[item.message.senderId]?.photoUrl ?? null
-                    : null
-                }
-                readReceipt={readReceiptStatus(
-                  item.message,
-                  currentUserId,
-                  participants,
-                  readUpTo
-                )}
-                reactions={item.message.reactions}
-                currentUserId={currentUserId}
-                onReactionPress={isOtherDeleted ? undefined : handleReactionPress}
-                onReactionChipPress={
-                  isOtherDeleted
-                    ? undefined
-                    : handleReactionChipPress(item.message.id)
-                }
-                onReply={isOtherDeleted ? undefined : handleReplySelect}
-                onRetryImage={isOtherDeleted ? undefined : retryImageMessage}
-                onRetryAudio={isOtherDeleted ? undefined : retryAudioMessage}
-                highlighted={highlightedMessageId === item.message.id}
-                replyAvailable={
-                  !item.message.replyTo || messagesById.has(item.message.replyTo.id)
-                }
-                onQuotedReplyPress={
-                  item.message.replyTo && messagesById.has(item.message.replyTo.id)
-                    ? () => jumpToMessage(item.message.replyTo!.id)
-                    : undefined
-                }
-                onSenderPress={
-                  chat?.isGroup && item.message.senderId !== currentUserId
-                    ? () => {
-                        router.push({
-                          pathname: "/profile",
-                          params: { memberId: item.message.senderId },
-                        });
-                      }
-                    : undefined
-                }
-              />
-            );
-          }}
+          onViewableItemsChanged={handleViewableItemsChanged}
+          viewabilityConfig={VIEWABILITY_CONFIG}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={11}
+          renderItem={renderItem}
         />
+        {loading ? (
+          <View
+            style={styles.loadingOverlay}
+            pointerEvents="none"
+            accessibilityLabel="Carregando mensagens"
+            accessibilityLiveRegion="polite"
+          >
+            <ActivityIndicator size="large" color={theme.primary} />
+          </View>
+        ) : null}
         <ReactionsDialog
           visible={reactionsDialogMessageId !== null}
           reactions={dialogReactions}
@@ -858,50 +707,25 @@ export default function ChatScreen() {
         />
       )}
     </KeyboardAvoidingView>
-      {reactionTarget && !isOtherDeleted ? (() => {
-        const targetMessage = messagesById.get(reactionTarget.messageId);
-        const isOwn =
-          targetMessage != null && targetMessage.senderId === currentUserId;
-        const canModify =
-          targetMessage != null && canModifyMessage(targetMessage);
-        const isText = targetMessage?.type === "text";
-        const isDeleted = targetMessage?.isDeleted === true;
-        const closeAndRun = (fn: () => void) => () => {
-          setReactionTarget(null);
-          fn();
-        };
-        return (
-          <ReactionMenu
-            visible
-            targetX={reactionTarget.x}
-            targetY={reactionTarget.y}
-            targetWidth={reactionTarget.width}
-            targetHeight={reactionTarget.height}
-            onEmojiSelect={handleQuickEmojiSelect}
-            onClose={closeReactionMenu}
-            onReply={
-              targetMessage && !isDeleted
-                ? closeAndRun(() => handleReplySelect(targetMessage))
-                : undefined
-            }
-            onCopy={
-              targetMessage && isText && !isDeleted
-                ? closeAndRun(() => void handleCopyMessage(targetMessage))
-                : undefined
-            }
-            onEdit={
-              targetMessage && isOwn && isText && canModify
-                ? closeAndRun(() => handleEditPress(targetMessage))
-                : undefined
-            }
-            onDelete={
-              targetMessage && isOwn && canModify
-                ? closeAndRun(() => handleDeletePress(targetMessage))
-                : undefined
-            }
-          />
-        );
-      })() : null}
+      <ImageViewer
+        uri={viewerImageUri}
+        visible={imageViewerVisible}
+        onClose={closeImageViewer}
+      />
+      {reactionTarget && !isOtherDeleted ? (
+        <MessageActionsMenu
+          target={reactionTarget}
+          message={messagesById.get(reactionTarget.messageId)}
+          currentUserId={currentUserId}
+          canModifyMessage={canModifyMessage}
+          onEmojiSelect={handleQuickEmojiSelect}
+          onClose={closeReactionMenu}
+          onReply={handleReplySelect}
+          onCopy={handleCopyMessageAction}
+          onEdit={handleEditPress}
+          onDelete={handleDeletePress}
+        />
+      ) : null}
     </View>
   );
 }

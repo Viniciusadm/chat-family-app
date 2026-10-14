@@ -1,26 +1,28 @@
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import { radius, spacing, type ThemeTokens } from "@/theme/tokens";
 import { useEffect, useRef } from "react";
 import { Animated, StyleSheet, View } from "react-native";
+
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs,
+    },
+    dot: {
+      width: 8,
+      height: 8,
+      borderRadius: radius.pill,
+      backgroundColor: t.primary,
+    },
+  });
 
 export function LoadingDots() {
   const a1 = useRef(new Animated.Value(0.35)).current;
   const a2 = useRef(new Animated.Value(0.35)).current;
   const a3 = useRef(new Animated.Value(0.35)).current;
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      row: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 6,
-      },
-      dot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: t.primary,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
 
   useEffect(() => {
     const pulse = (v: Animated.Value, delay: number) =>

@@ -4,6 +4,7 @@ export interface SearchableMessage {
   senderId: string;
   content: string;
   createdAtMs: number;
+  normalizedContent?: string;
 }
 
 export interface HighlightRange {
@@ -168,7 +169,7 @@ export function searchMessages(
   const scored: SearchResult[] = [];
   for (const msg of index) {
     if (!msg.content) continue;
-    const normalizedContent = normalize(msg.content);
+    const normalizedContent = msg.normalizedContent ?? normalize(msg.content);
     const score = scoreMessage(normalizedContent, phrase, tokens);
     if (score === 0) continue;
     scored.push({

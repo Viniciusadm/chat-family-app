@@ -1,8 +1,19 @@
 import { LoadingDots } from "@/components/LoadingDots";
 import { useAuth } from "@/context/AuthContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import type { ThemeTokens } from "@/theme/tokens";
 import { Redirect, Stack } from "expo-router";
 import { StyleSheet, View } from "react-native";
+
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    center: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: t.background,
+    },
+  });
 
 export default function ProtectedLayout() {
   const {
@@ -10,19 +21,9 @@ export default function ProtectedLayout() {
     deviceApproved,
     loading,
     sessionReady,
-    needsPushToken,
     needsPasswordRestore,
   } = useAuth();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      center: {
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: t.background,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
   const hasApprovedSession = currentUser != null && deviceApproved === true;
 
   if (loading || (currentUser && !sessionReady)) {
@@ -34,10 +35,6 @@ export default function ProtectedLayout() {
   }
 
   if (!currentUser && !hasApprovedSession) {
-    return <Redirect href="/login" />;
-  }
-
-  if (needsPushToken) {
     return <Redirect href="/login" />;
   }
 

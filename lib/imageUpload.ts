@@ -6,8 +6,6 @@ import type { MessageReplySnapshot } from "@/types/chat";
 export async function uploadAndPersistImage(args: {
   chatId: string;
   messageId: string;
-  tenantId: string;
-  senderId: string;
   imageUri: string;
   imageWidth: number;
   imageHeight: number;
@@ -17,8 +15,6 @@ export async function uploadAndPersistImage(args: {
   await ensureImageMessageRemote({
     chatId: args.chatId,
     messageId: args.messageId,
-    tenantId: args.tenantId,
-    senderId: args.senderId,
     imageUrl: null,
     thumbnailUrl: null,
     imageWidth: null,

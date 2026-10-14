@@ -1,52 +1,74 @@
 import * as SecureStore from "expo-secure-store";
 import { base64ToBytes, bytesToBase64 } from "./crypto/encoding";
+import { getDatabase } from "./db";
 
 const DEVICE_PRIV_KEY = "device-priv";
 const CONV_KEY_PREFIX = "convkey-";
-const CONV_KEY_INDEX = "convkey-index";
+const LEGACY_CONV_KEY_INDEX = "convkey-index";
+const KEY_STORE_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+};
 
-async function readIndex(): Promise<string[]> {
-  const raw = await SecureStore.getItemAsync(CONV_KEY_INDEX);
-  if (!raw) return [];
+let legacyIndexMigration: Promise<void> | null = null;
+
+async function migrateLegacyIndex(): Promise<void> {
+  const raw = await SecureStore.getItemAsync(LEGACY_CONV_KEY_INDEX);
+  if (!raw) return;
+  let ids: string[] = [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
+    if (Array.isArray(parsed)) ids = parsed.filter((v) => typeof v === "string");
   } catch {
-    return [];
+    ids = [];
   }
+  const db = await getDatabase();
+  for (const chatId of ids) {
+    await db.runAsync("INSERT OR IGNORE INTO conversation_keys (chat_id) VALUES (?)", [chatId]);
+  }
+  await SecureStore.deleteItemAsync(LEGACY_CONV_KEY_INDEX);
 }
 
-async function writeIndex(ids: string[]): Promise<void> {
-  await SecureStore.setItemAsync(CONV_KEY_INDEX, JSON.stringify(ids));
+async function indexDatabase() {
+  legacyIndexMigration ??= migrateLegacyIndex().catch(() => {
+    legacyIndexMigration = null;
+  });
+  await legacyIndexMigration;
+  return getDatabase();
 }
 
 export const SecureKeyStore = {
   async getDevicePrivateKey(): Promise<Uint8Array | null> {
-    const raw = await SecureStore.getItemAsync(DEVICE_PRIV_KEY);
+    const raw = await SecureStore.getItemAsync(DEVICE_PRIV_KEY, KEY_STORE_OPTIONS);
     return raw ? base64ToBytes(raw) : null;
   },
   async setDevicePrivateKey(privateKey: Uint8Array): Promise<void> {
-    await SecureStore.setItemAsync(DEVICE_PRIV_KEY, bytesToBase64(privateKey));
+    await SecureStore.setItemAsync(DEVICE_PRIV_KEY, bytesToBase64(privateKey), KEY_STORE_OPTIONS);
   },
   async getConversationKey(chatId: string): Promise<Uint8Array | null> {
-    const raw = await SecureStore.getItemAsync(CONV_KEY_PREFIX + chatId);
+    const raw = await SecureStore.getItemAsync(CONV_KEY_PREFIX + chatId, KEY_STORE_OPTIONS);
     return raw ? base64ToBytes(raw) : null;
   },
   async setConversationKey(chatId: string, key: Uint8Array): Promise<void> {
-    await SecureStore.setItemAsync(CONV_KEY_PREFIX + chatId, bytesToBase64(key));
-    const index = await readIndex();
-    if (!index.includes(chatId)) {
-      index.push(chatId);
-      await writeIndex(index);
-    }
+    await SecureStore.setItemAsync(CONV_KEY_PREFIX + chatId, bytesToBase64(key), KEY_STORE_OPTIONS);
+    const db = await indexDatabase();
+    await db.runAsync("INSERT OR IGNORE INTO conversation_keys (chat_id) VALUES (?)", [chatId]);
   },
   async removeConversationKey(chatId: string): Promise<void> {
-    await SecureStore.deleteItemAsync(CONV_KEY_PREFIX + chatId);
-    const index = await readIndex();
-    const next = index.filter((id) => id !== chatId);
-    if (next.length !== index.length) await writeIndex(next);
+    await SecureStore.deleteItemAsync(CONV_KEY_PREFIX + chatId, KEY_STORE_OPTIONS);
+    const db = await indexDatabase();
+    await db.runAsync("DELETE FROM conversation_keys WHERE chat_id = ?", [chatId]);
   },
   async listConversationKeyChatIds(): Promise<string[]> {
-    return readIndex();
+    const db = await indexDatabase();
+    const rows = await db.getAllAsync<{ chat_id: string }>(
+      "SELECT chat_id FROM conversation_keys",
+    );
+    return rows.map((row) => row.chat_id);
+  },
+  async removeAllConversationKeys(): Promise<void> {
+    const chatIds = await this.listConversationKeyChatIds();
+    for (const chatId of chatIds) {
+      await this.removeConversationKey(chatId);
+    }
   },
 };

@@ -1,315 +1,57 @@
+import { AddUserModal } from "@/components/admin/AddUserModal";
+import { ChatFormModal } from "@/components/admin/ChatFormModal";
+import { ChatsSection } from "@/components/admin/ChatsSection";
+import { DeleteChatModal } from "@/components/admin/DeleteChatModal";
+import { DeleteChildModal } from "@/components/admin/DeleteChildModal";
+import { errorMessage } from "@/components/admin/errorMessage";
+import { MembersSection } from "@/components/admin/MembersSection";
+import { PendingDevicesSection } from "@/components/admin/PendingDevicesSection";
+import { SecuritySection } from "@/components/admin/SecuritySection";
 import { AppHeader } from "@/components/AppHeader";
 import { LoadingDots } from "@/components/LoadingDots";
-import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { useAuth } from "@/context/AuthContext";
 import { useAdminData } from "@/hooks/useAdminData";
-import { getChatDisplayName } from "@/lib/chatDisplayName";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
-import type { AppMember, Chat, UserRole } from "@/types/chat";
-import { Ionicons } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
-import * as ImageManipulator from "expo-image-manipulator";
-import * as ImagePicker from "expo-image-picker";
+import { spacing, type ThemeTokens } from "@/theme/tokens";
+import type { AppMember, Chat } from "@/types/chat";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
 
-function formatTime(date: Date) {
-  return date.toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: t.background,
+    },
+    center: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    loadingGap: {
+      height: spacing.lg,
+    },
+    scroll: {
+      padding: spacing.lg,
+      paddingBottom: spacing.huge,
+      gap: spacing.sm,
+    },
   });
-}
 
 export default function AdminScreen() {
   const router = useRouter();
   const { currentUser, logout } = useAuth();
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      screen: {
-        flex: 1,
-        backgroundColor: t.background,
-      },
-      center: {
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      scroll: {
-        padding: 16,
-        paddingBottom: 40,
-        gap: 8,
-      },
-      sectionHead: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-        marginTop: 16,
-        marginBottom: 8,
-      },
-      sectionLabel: {
-        fontSize: 12,
-        fontWeight: "600",
-        color: t.mutedForeground,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-      },
-      card: {
-        backgroundColor: t.card,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: t.border,
-        padding: 14,
-        marginBottom: 8,
-      },
-      cardRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
-      },
-      deviceRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-      },
-      cardBody: {
-        flex: 1,
-        minWidth: 0,
-      },
-      cardTitle: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: t.foreground,
-      },
-      cardMeta: {
-        marginTop: 4,
-        fontSize: 12,
-        color: t.mutedForeground,
-      },
-      codeRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-        marginTop: 4,
-      },
-      codeText: {
-        fontFamily: "monospace",
-        fontSize: 12,
-        color: t.mutedForeground,
-        letterSpacing: 1,
-      },
-      badge: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 8,
-      },
-      badgeAdult: {
-        backgroundColor: t.primary,
-      },
-      badgeChild: {
-        backgroundColor: t.muted,
-      },
-      badgeText: {
-        fontSize: 12,
-        fontWeight: "600",
-        color: t.foreground,
-      },
-      badgeTextAdult: {
-        color: t.primaryForeground,
-      },
-      emptyBox: {
-        backgroundColor: t.muted,
-        borderRadius: 12,
-        padding: 24,
-        alignItems: "center",
-        marginBottom: 8,
-      },
-      emptyText: {
-        fontSize: 14,
-        color: t.mutedForeground,
-      },
-      outlineBtn: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        borderWidth: 1,
-        borderColor: t.border,
-        borderRadius: 12,
-        paddingVertical: 12,
-        marginTop: 4,
-        marginBottom: 8,
-      },
-      outlineBtnText: {
-        fontSize: 15,
-        color: t.foreground,
-      },
-      iconAct: {
-        padding: 6,
-      },
-      pressed: {
-        opacity: 0.85,
-      },
-      modalRoot: {
-        flex: 1,
-        justifyContent: "center",
-        paddingHorizontal: 20,
-      },
-      modalOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: t.modalBackdrop,
-      },
-      modalCard: {
-        backgroundColor: t.background,
-        borderRadius: 16,
-        padding: 20,
-        maxHeight: "85%",
-      },
-      modalTall: {
-        maxHeight: "80%",
-      },
-      modalTitle: {
-        fontSize: 18,
-        fontWeight: "600",
-        color: t.foreground,
-        marginBottom: 16,
-      },
-      input: {
-        borderWidth: 1,
-        borderColor: t.inputBorder,
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 16,
-        color: t.foreground,
-        marginBottom: 12,
-      },
-      fieldLabel: {
-        fontSize: 14,
-        fontWeight: "500",
-        color: t.mutedForeground,
-        marginBottom: 8,
-      },
-      roleRow: {
-        flexDirection: "row",
-        gap: 10,
-        marginBottom: 12,
-      },
-      roleChip: {
-        flex: 1,
-        paddingVertical: 10,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: t.border,
-        alignItems: "center",
-      },
-      roleChipOn: {
-        borderColor: t.primary,
-        backgroundColor: t.primaryTint,
-      },
-      roleChipText: {
-        fontSize: 15,
-        color: t.foreground,
-      },
-      roleChipTextOn: {
-        fontWeight: "600",
-        color: t.primary,
-      },
-      error: {
-        fontSize: 14,
-        color: t.destructive,
-        marginBottom: 8,
-      },
-      modalActions: {
-        flexDirection: "row",
-        justifyContent: "flex-end",
-        gap: 12,
-        marginTop: 16,
-      },
-      modalGhost: {
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-      },
-      modalPrimary: {
-        backgroundColor: t.primary,
-        borderRadius: 10,
-        paddingVertical: 10,
-        paddingHorizontal: 18,
-      },
-      modalPrimaryRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-      },
-      modalDanger: {
-        backgroundColor: t.destructive,
-        borderRadius: 10,
-        paddingVertical: 10,
-        paddingHorizontal: 18,
-      },
-      ghostText: {
-        fontSize: 16,
-        color: t.mutedForeground,
-      },
-      primaryText: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: t.primaryForeground,
-      },
-      btnDisabled: {
-        opacity: 0.5,
-      },
-      participantList: {
-        maxHeight: 220,
-        marginBottom: 8,
-      },
-      checkRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
-        paddingVertical: 10,
-        paddingHorizontal: 4,
-      },
-      checkLabel: {
-        fontSize: 15,
-        color: t.foreground,
-      },
-      deleteDesc: {
-        fontSize: 14,
-        lineHeight: 20,
-        color: t.mutedForeground,
-        marginBottom: 8,
-      },
-      groupPhotoSection: {
-        alignItems: "center",
-        marginBottom: 16,
-        gap: 12,
-      },
-      groupPhotoActions: {
-        flexDirection: "row",
-        gap: 12,
-      },
-      groupPhotoBtn: {
-        flex: 0,
-        paddingHorizontal: 16,
-        marginTop: 0,
-        marginBottom: 0,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
 
   const {
     members,
@@ -330,30 +72,16 @@ export default function AdminScreen() {
   } = useAdminData();
 
   const [showAddUser, setShowAddUser] = useState(false);
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserRole, setNewUserRole] = useState<UserRole>("child");
-  const [addParticipantError, setAddParticipantError] = useState("");
-
   const [showCreateChat, setShowCreateChat] = useState(false);
-  const [chatName, setChatName] = useState("");
-  const [selectedParticipants, setSelectedParticipants] = useState<string[]>(
-    []
-  );
-  const [creatingChat, setCreatingChat] = useState(false);
-
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
-  const [editChatName, setEditChatName] = useState("");
-  const [editChatParticipants, setEditChatParticipants] = useState<string[]>(
-    []
-  );
-
+  const [editForm, setEditForm] = useState<{
+    session: number;
+    name: string;
+    participants: string[];
+  }>({ session: 0, name: "", participants: [] });
+  const [deviceActionId, setDeviceActionId] = useState<string | null>(null);
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
   const [childToDelete, setChildToDelete] = useState<AppMember | null>(null);
-  const [deleteChildMessages, setDeleteChildMessages] = useState(false);
-  const [deletingChild, setDeletingChild] = useState(false);
-  const memberProfiles = Object.fromEntries(
-    members.map((member) => [member.id, { name: member.name }])
-  );
 
   useEffect(() => {
     if (canMutate) return;
@@ -362,156 +90,62 @@ export default function AdminScreen() {
     setEditingChatId(null);
     setChatToDelete(null);
     setChildToDelete(null);
-    setDeleteChildMessages(false);
-    setDeletingChild(false);
   }, [canMutate]);
 
   if (currentUser?.role !== "adult") {
     return <Redirect href="/" />;
   }
 
-  const SectionTitle = ({
-    icon,
-    label,
-  }: {
-    icon: keyof typeof Ionicons.glyphMap;
-    label: string;
-  }) => (
-    <View style={styles.sectionHead}>
-      <Ionicons name={icon} size={16} color={theme.primary} />
-      <Text style={styles.sectionLabel}>{label}</Text>
-    </View>
-  );
-
-  const copyLoginCode = async (code: string) => {
-    await Clipboard.setStringAsync(code);
+  const confirmLogout = () => {
+    Alert.alert("Sair", "Deseja sair da sua conta neste aparelho?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Sair",
+        style: "destructive",
+        onPress: () => {
+          void logout().catch(() => {});
+        },
+      },
+    ]);
   };
 
-  const handleAddUser = async () => {
-    if (!newUserName.trim()) return;
-    setAddParticipantError("");
+  const handleApproveDevice = async (deviceId: string) => {
+    if (deviceActionId) return;
+    setDeviceActionId(deviceId);
     try {
-      await addUser(newUserName.trim(), newUserRole);
-      setNewUserName("");
-      setNewUserRole("child");
-      setShowAddUser(false);
-    } catch (e: unknown) {
-      setAddParticipantError(
-        e instanceof Error ? e.message : "Erro ao criar participante"
+      await approveDevice(deviceId);
+    } catch (e) {
+      Alert.alert(
+        "Erro ao aprovar",
+        errorMessage(e, "Não foi possível aprovar o dispositivo.")
       );
+    } finally {
+      setDeviceActionId(null);
     }
   };
 
-  const toggleParticipant = (userId: string) => {
-    setSelectedParticipants((prev) =>
-      prev.includes(userId)
-        ? prev.filter((id) => id !== userId)
-        : [...prev, userId]
-    );
-  };
-
-  const toggleEditParticipant = (userId: string) => {
-    setEditChatParticipants((prev) =>
-      prev.includes(userId)
-        ? prev.filter((id) => id !== userId)
-        : [...prev, userId]
-    );
-  };
-
-  const handleCreateChat = async () => {
-    if (selectedParticipants.length < 3 || creatingChat) return;
-    const name = chatName.trim();
-    if (!name) return;
-    setCreatingChat(true);
+  const handleRejectDevice = async (deviceId: string) => {
+    if (deviceActionId) return;
+    setDeviceActionId(deviceId);
     try {
-      await createChat(name, selectedParticipants);
-      setChatName("");
-      setSelectedParticipants([]);
-      setShowCreateChat(false);
+      await rejectDevice(deviceId);
+    } catch (e) {
+      Alert.alert(
+        "Erro ao recusar",
+        errorMessage(e, "Não foi possível recusar o dispositivo.")
+      );
     } finally {
-      setCreatingChat(false);
+      setDeviceActionId(null);
     }
   };
 
   const openEditChat = (chat: Chat) => {
     setEditingChatId(chat.id);
-    setEditChatName(chat.name);
-    setEditChatParticipants([...chat.participants]);
-  };
-
-  const handleUpdateChat = async () => {
-    if (!editingChatId || editChatParticipants.length < 3) return;
-    const name = editChatName.trim();
-    if (!name) return;
-    await updateChat(editingChatId, name, editChatParticipants);
-    setEditingChatId(null);
-  };
-
-  const handlePickGroupPhoto = async () => {
-    if (!editingChatId) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.86,
-    });
-    if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0];
-    const compressed = await ImageManipulator.manipulateAsync(
-      asset.uri,
-      [{ resize: { width: 512 } }],
-      { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
-    );
-    try {
-      await updateChatPhoto(editingChatId, compressed.uri);
-    } catch (e) {
-      Alert.alert("", e instanceof Error ? e.message : "Erro ao enviar foto.");
-    }
-  };
-
-  const handleClearGroupPhoto = async () => {
-    if (!editingChatId) return;
-    try {
-      await removeChatPhoto(editingChatId);
-    } catch (e) {
-      Alert.alert("", e instanceof Error ? e.message : "Erro ao remover foto.");
-    }
-  };
-
-  const handleConfirmDeleteChat = async () => {
-    if (!chatToDelete) return;
-    await deleteChat(chatToDelete.id);
-    setChatToDelete(null);
-  };
-
-  const openDeleteChild = (member: AppMember) => {
-    setChildToDelete(member);
-    setDeleteChildMessages(false);
-  };
-
-  const closeDeleteChild = () => {
-    if (deletingChild) return;
-    setChildToDelete(null);
-    setDeleteChildMessages(false);
-  };
-
-  const handleConfirmDeleteChild = async () => {
-    if (!childToDelete || deletingChild) return;
-    setDeletingChild(true);
-    try {
-      await deleteChildMember(childToDelete.id, deleteChildMessages);
-      setChildToDelete(null);
-      setDeleteChildMessages(false);
-    } catch (e) {
-      Alert.alert(
-        "",
-        e instanceof Error ? e.message : "Não foi possível apagar a criança."
-      );
-    } finally {
-      setDeletingChild(false);
-    }
+    setEditForm((prev) => ({
+      session: prev.session + 1,
+      name: chat.name,
+      participants: chat.participants,
+    }));
   };
 
   return (
@@ -520,12 +154,13 @@ export default function AdminScreen() {
         title="Gerenciamento"
         onBack={() => router.back()}
         rightIcon="log-out-outline"
-        onRightPress={() => void logout()}
+        onRightPress={confirmLogout}
+        rightAccessibilityLabel="Sair"
       />
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={theme.primary} />
-          <View style={{ height: 16 }} />
+          <View style={styles.loadingGap} />
           <LoadingDots />
         </View>
       ) : (
@@ -533,601 +168,83 @@ export default function AdminScreen() {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
-          <SectionTitle icon="people-outline" label="Participantes" />
-          {members.map((member) => (
-            <View key={member.id} style={styles.card}>
-              <View style={styles.cardRow}>
-                <ProfileAvatar
-                  name={member.name}
-                  photoUrl={member.photoUrl}
-                  size={40}
-                />
-                <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle}>{member.name}</Text>
-                  {member.loginCode ? (
-                    <View style={styles.codeRow}>
-                      <Text style={styles.codeText}>{member.loginCode}</Text>
-                      <Pressable
-                        onPress={() => void copyLoginCode(member.loginCode!)}
-                        hitSlop={8}
-                        style={({ pressed }) => pressed && styles.pressed}
-                      >
-                        <Ionicons
-                          name="copy-outline"
-                          size={18}
-                          color={theme.mutedForeground}
-                        />
-                      </Pressable>
-                    </View>
-                  ) : (
-                    <Text style={styles.cardMeta}>Conta com e-mail</Text>
-                  )}
-                </View>
-                <View
-                  style={[
-                    styles.badge,
-                    member.role === "adult"
-                      ? styles.badgeAdult
-                      : styles.badgeChild,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.badgeText,
-                      member.role === "adult" && styles.badgeTextAdult,
-                    ]}
-                  >
-                    {member.role === "adult" ? "Adulto" : "Criança"}
-                  </Text>
-                </View>
-                {canMutate && member.role === "child" ? (
-                  <Pressable
-                    onPress={() => openDeleteChild(member)}
-                    style={styles.iconAct}
-                    hitSlop={8}
-                  >
-                    <Ionicons
-                      name="trash-outline"
-                      size={22}
-                      color={theme.destructive}
-                    />
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
-          ))}
-          {canMutate ? (
-            <Pressable
-              onPress={() => setShowAddUser(true)}
-              style={({ pressed }) => [
-                styles.outlineBtn,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Ionicons
-                name="person-add-outline"
-                size={18}
-                color={theme.foreground}
-              />
-              <Text style={styles.outlineBtnText}>Adicionar participante</Text>
-            </Pressable>
-          ) : null}
-
-          <SectionTitle icon="phone-portrait-outline" label="Dispositivos pendentes" />
-          {pendingDevices.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>Nenhum dispositivo pendente</Text>
-            </View>
-          ) : (
-            pendingDevices.map((device) => {
-              const ownerName = sessionUserNames[device.userId];
-              return (
-                <View key={device.id} style={styles.card}>
-                  <View style={styles.deviceRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.cardTitle}>
-                        {ownerName ?? "Dispositivo desconhecido"}
-                      </Text>
-                      <Text style={styles.cardMeta}>
-                        {device.id.slice(0, 8)}… ·{" "}
-                        {formatTime(device.createdAt)}
-                      </Text>
-                    </View>
-                    {canMutate ? (
-                      <>
-                        <Pressable
-                          onPress={() => void approveDevice(device.id)}
-                          style={styles.iconAct}
-                        >
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={28}
-                            color={theme.primary}
-                          />
-                        </Pressable>
-                        <Pressable
-                          onPress={() => void rejectDevice(device.id)}
-                          style={styles.iconAct}
-                        >
-                          <Ionicons
-                            name="close-circle"
-                            size={28}
-                            color={theme.destructive}
-                          />
-                        </Pressable>
-                      </>
-                    ) : null}
-                  </View>
-                </View>
-              );
-            })
-          )}
-
-          <SectionTitle icon="chatbubbles-outline" label="Conversas" />
-          {chats.map((chat) => {
-            const displayName = getChatDisplayName(
-              chat,
-              currentUser.id,
-              memberProfiles
-            );
-
-            return (
-              <View key={chat.id} style={styles.card}>
-                <View style={styles.cardRow}>
-                  <ProfileAvatar
-                    name={displayName}
-                    photoUrl={chat.isGroup ? chat.photoUrl : undefined}
-                    icon={chat.isGroup ? "people-outline" : "chatbubble-outline"}
-                    size={40}
-                  />
-                  <View style={styles.cardBody}>
-                    <Text style={styles.cardTitle}>{displayName}</Text>
-                    <Text style={styles.cardMeta}>
-                      {chat.participants.length} membros
-                    </Text>
-                  </View>
-                  {canMutate && chat.isGroup ? (
-                    <>
-                      <Pressable
-                        onPress={() => openEditChat(chat)}
-                        style={styles.iconAct}
-                      >
-                        <Ionicons
-                          name="pencil-outline"
-                          size={22}
-                          color={theme.primary}
-                        />
-                      </Pressable>
-                      <Pressable
-                        onPress={() => setChatToDelete(chat)}
-                        style={styles.iconAct}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={22}
-                          color={theme.destructive}
-                        />
-                      </Pressable>
-                    </>
-                  ) : null}
-                </View>
-              </View>
-            );
-          })}
-          {canMutate ? (
-            <Pressable
-              onPress={() => setShowCreateChat(true)}
-              style={({ pressed }) => [
-                styles.outlineBtn,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={18}
-                color={theme.foreground}
-              />
-              <Text style={styles.outlineBtnText}>Criar conversa</Text>
-            </Pressable>
-          ) : null}
-
-          <SectionTitle icon="lock-closed-outline" label="Segurança" />
-          <Pressable
-            onPress={() => router.push("/encryption")}
-            style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-          >
-            <View style={styles.cardRow}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={22}
-                color={theme.foreground}
-              />
-              <View style={styles.cardBody}>
-                <Text style={styles.cardTitle}>Senha de criptografia</Text>
-                <Text style={styles.cardMeta}>
-                  Proteger backup das chaves no servidor
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={theme.mutedForeground}
-              />
-            </View>
-          </Pressable>
+          <MembersSection
+            members={members}
+            canMutate={canMutate}
+            onAddUser={() => setShowAddUser(true)}
+            onDeleteChild={setChildToDelete}
+          />
+          <PendingDevicesSection
+            pendingDevices={pendingDevices}
+            sessionUserNames={sessionUserNames}
+            canMutate={canMutate}
+            deviceActionId={deviceActionId}
+            onApprove={(deviceId) => void handleApproveDevice(deviceId)}
+            onReject={(deviceId) => void handleRejectDevice(deviceId)}
+          />
+          <ChatsSection
+            chats={chats}
+            members={members}
+            currentUserId={currentUser.id}
+            canMutate={canMutate}
+            onCreateChat={() => setShowCreateChat(true)}
+            onEditChat={openEditChat}
+            onDeleteChat={setChatToDelete}
+          />
+          <SecuritySection onOpenEncryption={() => router.push("/encryption")} />
         </ScrollView>
       )}
 
-      <Modal visible={canMutate && showAddUser} transparent animationType="fade">
-        <View style={styles.modalRoot}>
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => {
-              setShowAddUser(false);
-              setAddParticipantError("");
-            }}
-          />
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Adicionar participante</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nome"
-              placeholderTextColor={theme.inputPlaceholder}
-              value={newUserName}
-              onChangeText={setNewUserName}
-            />
-            <Text style={styles.fieldLabel}>Papel</Text>
-            <View style={styles.roleRow}>
-              <Pressable
-                onPress={() => setNewUserRole("child")}
-                style={[
-                  styles.roleChip,
-                  newUserRole === "child" && styles.roleChipOn,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.roleChipText,
-                    newUserRole === "child" && styles.roleChipTextOn,
-                  ]}
-                >
-                  Criança
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setNewUserRole("adult")}
-                style={[
-                  styles.roleChip,
-                  newUserRole === "adult" && styles.roleChipOn,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.roleChipText,
-                    newUserRole === "adult" && styles.roleChipTextOn,
-                  ]}
-                >
-                  Adulto
-                </Text>
-              </Pressable>
-            </View>
-            {addParticipantError ? (
-              <Text style={styles.error}>{addParticipantError}</Text>
-            ) : null}
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => {
-                  setShowAddUser(false);
-                  setAddParticipantError("");
-                }}
-                style={styles.modalGhost}
-              >
-                <Text style={styles.ghostText}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void handleAddUser()}
-                disabled={!newUserName.trim()}
-                style={[
-                  styles.modalPrimary,
-                  !newUserName.trim() && styles.btnDisabled,
-                ]}
-              >
-                <Text style={styles.primaryText}>Criar</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <AddUserModal
+        visible={canMutate && showAddUser}
+        onClose={() => setShowAddUser(false)}
+        addUser={addUser}
+      />
 
-      <Modal visible={canMutate && showCreateChat} transparent animationType="fade">
-        <View style={styles.modalRoot}>
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => {
-              if (creatingChat) return;
-              setShowCreateChat(false);
-            }}
-          />
-          <View style={[styles.modalCard, styles.modalTall]}>
-            <Text style={styles.modalTitle}>Criar conversa</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nome do grupo"
-              placeholderTextColor={theme.inputPlaceholder}
-              value={chatName}
-              onChangeText={setChatName}
-              editable={!creatingChat}
-            />
-            <Text style={styles.fieldLabel}>
-              Participantes (mínimo 3)
-            </Text>
-            <ScrollView style={styles.participantList} nestedScrollEnabled>
-              {members.map((m) => (
-                <Pressable
-                  key={m.id}
-                  onPress={() => toggleParticipant(m.id)}
-                  style={styles.checkRow}
-                  disabled={creatingChat}
-                >
-                  <Ionicons
-                    name={
-                      selectedParticipants.includes(m.id)
-                        ? "checkbox"
-                        : "square-outline"
-                    }
-                    size={22}
-                    color={
-                      selectedParticipants.includes(m.id)
-                        ? theme.primary
-                        : theme.border
-                    }
-                  />
-                  <Text style={styles.checkLabel}>{m.name}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setShowCreateChat(false)}
-                style={styles.modalGhost}
-                disabled={creatingChat}
-              >
-                <Text style={styles.ghostText}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void handleCreateChat()}
-                disabled={
-                  selectedParticipants.length < 3 ||
-                  creatingChat ||
-                  !chatName.trim()
-                }
-                style={[
-                  styles.modalPrimary,
-                  styles.modalPrimaryRow,
-                  (selectedParticipants.length < 3 ||
-                    creatingChat ||
-                    !chatName.trim()) &&
-                    styles.btnDisabled,
-                ]}
-              >
-                {creatingChat ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={theme.primaryForeground}
-                  />
-                ) : null}
-                <Text style={styles.primaryText}>
-                  {creatingChat ? "Criando..." : "Criar"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <ChatFormModal
+        mode="create"
+        visible={canMutate && showCreateChat}
+        members={members}
+        onSubmit={createChat}
+        onClose={() => setShowCreateChat(false)}
+      />
 
-      <Modal visible={canMutate && editingChatId !== null} transparent animationType="fade">
-        <View style={styles.modalRoot}>
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => setEditingChatId(null)}
-          />
-          <View style={[styles.modalCard, styles.modalTall]}>
-            <Text style={styles.modalTitle}>Editar conversa</Text>
-            {(() => {
-              const editingChat = chats.find((c) => c.id === editingChatId);
-              if (!editingChat) return null;
-              return (
-                <View style={styles.groupPhotoSection}>
-                  <ProfileAvatar
-                    name={editingChat.name}
-                    photoUrl={editingChat.photoUrl}
-                    icon="people-outline"
-                    size={88}
-                  />
-                  <View style={styles.groupPhotoActions}>
-                    <Pressable
-                      onPress={() => void handlePickGroupPhoto()}
-                      style={({ pressed }) => [
-                        styles.outlineBtn,
-                        styles.groupPhotoBtn,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <Ionicons
-                        name="camera-outline"
-                        size={18}
-                        color={theme.foreground}
-                      />
-                      <Text style={styles.outlineBtnText}>
-                        {editingChat.photoUrl ? "Trocar foto" : "Adicionar foto"}
-                      </Text>
-                    </Pressable>
-                    {editingChat.photoUrl ? (
-                      <Pressable
-                        onPress={() => void handleClearGroupPhoto()}
-                        style={({ pressed }) => [
-                          styles.outlineBtn,
-                          styles.groupPhotoBtn,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={18}
-                          color={theme.destructive}
-                        />
-                        <Text
-                          style={[
-                            styles.outlineBtnText,
-                            { color: theme.destructive },
-                          ]}
-                        >
-                          Remover
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                </View>
-              );
-            })()}
-            <TextInput
-              style={styles.input}
-              placeholder="Nome do grupo"
-              placeholderTextColor={theme.inputPlaceholder}
-              value={editChatName}
-              onChangeText={setEditChatName}
-            />
-            <Text style={styles.fieldLabel}>
-              Participantes (mínimo 3)
-            </Text>
-            <ScrollView style={styles.participantList} nestedScrollEnabled>
-              {members.map((m) => (
-                <Pressable
-                  key={m.id}
-                  onPress={() => toggleEditParticipant(m.id)}
-                  style={styles.checkRow}
-                >
-                  <Ionicons
-                    name={
-                      editChatParticipants.includes(m.id)
-                        ? "checkbox"
-                        : "square-outline"
-                    }
-                    size={22}
-                    color={
-                      editChatParticipants.includes(m.id)
-                        ? theme.primary
-                        : theme.border
-                    }
-                  />
-                  <Text style={styles.checkLabel}>{m.name}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setEditingChatId(null)}
-                style={styles.modalGhost}
-              >
-                <Text style={styles.ghostText}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void handleUpdateChat()}
-                disabled={
-                  editChatParticipants.length < 3 || !editChatName.trim()
-                }
-                style={[
-                  styles.modalPrimary,
-                  (editChatParticipants.length < 3 || !editChatName.trim()) &&
-                    styles.btnDisabled,
-                ]}
-              >
-                <Text style={styles.primaryText}>Salvar</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <ChatFormModal
+        key={editForm.session}
+        mode="edit"
+        visible={canMutate && editingChatId !== null}
+        members={members}
+        initialName={editForm.name}
+        initialParticipants={editForm.participants}
+        photoChat={chats.find((c) => c.id === editingChatId)}
+        onSubmit={async (name, participantIds) => {
+          if (!editingChatId) return;
+          await updateChat(editingChatId, name, participantIds);
+        }}
+        onClose={() => setEditingChatId(null)}
+        onUpdatePhoto={async (localUri) => {
+          if (!editingChatId) return;
+          await updateChatPhoto(editingChatId, localUri);
+        }}
+        onRemovePhoto={async () => {
+          if (!editingChatId) return;
+          await removeChatPhoto(editingChatId);
+        }}
+      />
 
-      <Modal visible={canMutate && chatToDelete !== null} transparent animationType="fade">
-        <View style={styles.modalRoot}>
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => setChatToDelete(null)}
-          />
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Apagar conversa?</Text>
-            <Text style={styles.deleteDesc}>
-              Esta ação não pode ser desfeita. Todas as mensagens desta conversa
-              serão removidas permanentemente.
-            </Text>
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setChatToDelete(null)}
-                style={styles.modalGhost}
-              >
-                <Text style={styles.ghostText}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void handleConfirmDeleteChat()}
-                style={styles.modalDanger}
-              >
-                <Text style={styles.primaryText}>Apagar</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <DeleteChatModal
+        visible={canMutate && chatToDelete !== null}
+        chat={chatToDelete}
+        onClose={() => setChatToDelete(null)}
+        deleteChat={deleteChat}
+      />
 
-      <Modal visible={canMutate && childToDelete !== null} transparent animationType="fade">
-        <View style={styles.modalRoot}>
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={closeDeleteChild}
-          />
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Apagar criança?</Text>
-            <Text style={styles.deleteDesc}>
-              Tem certeza que deseja apagar {childToDelete?.name}? Esta ação
-              não pode ser desfeita e a criança será deslogada dos dispositivos
-              já conectados.
-            </Text>
-            <Pressable
-              onPress={() => setDeleteChildMessages((value) => !value)}
-              style={styles.checkRow}
-              disabled={deletingChild}
-            >
-              <Ionicons
-                name={deleteChildMessages ? "checkbox" : "square-outline"}
-                size={22}
-                color={deleteChildMessages ? theme.primary : theme.border}
-              />
-              <Text style={styles.checkLabel}>apagar também as mensagens</Text>
-            </Pressable>
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={closeDeleteChild}
-                style={styles.modalGhost}
-                disabled={deletingChild}
-              >
-                <Text style={styles.ghostText}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void handleConfirmDeleteChild()}
-                style={[
-                  styles.modalDanger,
-                  deletingChild && styles.btnDisabled,
-                ]}
-                disabled={deletingChild}
-              >
-                <Text style={styles.primaryText}>
-                  {deletingChild ? "Apagando..." : "Apagar"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <DeleteChildModal
+        visible={canMutate && childToDelete !== null}
+        child={childToDelete}
+        onClose={() => setChildToDelete(null)}
+        deleteChildMember={deleteChildMember}
+      />
     </ScreenContainer>
   );
 }

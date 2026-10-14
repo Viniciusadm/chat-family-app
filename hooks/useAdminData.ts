@@ -2,6 +2,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useConnectivity } from "@/hooks/useConnectivity";
 import { AdminRepository } from "@/lib/AdminRepository";
 import { ChatRepository } from "@/lib/ChatRepository";
+import { chatFromDto } from "@/lib/chatFromDto";
 import { prepareConversationKeyForEncryption } from "@/lib/conversationKeyReadiness";
 import { debounce, REALTIME_REFRESH_DELAY_MS } from "@/lib/debounce";
 import { distributeAllOwnedKeysToDevice, distributeConversationKey } from "@/lib/keyDistribution";
@@ -17,7 +18,6 @@ import {
   deleteChat as deleteChatApi,
   listChats,
   updateChat as updateChatApi,
-  type ChatDto,
 } from "@/src/api/chats";
 import {
   createMember,
@@ -25,34 +25,8 @@ import {
   listMembers,
 } from "@/src/api/members";
 import { realtimeClient } from "@/src/api/realtime";
-import { timestampFromIso } from "@/lib/localTimestamp";
 import type { AppMember, Chat, Device, UserRole } from "@/types/chat";
 import { useCallback, useEffect, useState } from "react";
-
-function chatFromDto(data: ChatDto, currentMemberId: string): Chat {
-  return {
-    id: data.id,
-    tenantId: data.tenant_id,
-    participants: data.participant_ids ?? [],
-    isGroup: data.is_group,
-    name: data.name,
-    photoUrl: data.photo_url ?? null,
-    photoPath: data.photo_path ?? null,
-    unreadCount: data.unread_by?.[currentMemberId] ?? 0,
-    readUpTo: Object.fromEntries(
-      Object.entries(data.read_up_to ?? {})
-        .map(([memberId, value]) => [memberId, timestampFromIso(value)])
-        .filter((entry): entry is [string, NonNullable<Chat["readUpTo"]>[string]] => entry[1] != null)
-    ),
-    lastMessage: data.last_message_at && data.last_message_type
-      ? {
-          text: null,
-          type: data.last_message_type,
-          timestamp: new Date(data.last_message_at),
-        }
-      : undefined,
-  };
-}
 
 export function useAdminData() {
   const { tenantId, currentUser, deviceId: currentDeviceId } = useAuth();
@@ -184,7 +158,7 @@ export function useAdminData() {
     );
     for (const chat of directChats) {
       if (currentUser) {
-        void distributeConversationKey(chat.id, chat.participants, effectiveTenantId, currentUser.id);
+        void distributeConversationKey(chat.id, chat.participants);
       }
     }
   };
@@ -203,7 +177,7 @@ export function useAdminData() {
           })
         )
       );
-      await distributeAllOwnedKeysToDevice(deviceId, device.publicKey, chatIds, currentUser.id);
+      await distributeAllOwnedKeysToDevice(deviceId, device.publicKey, chatIds);
     }
     await approveDeviceApi(deviceId);
     await refreshRemote(() => true);
@@ -229,7 +203,7 @@ export function useAdminData() {
       canCreate: true,
     });
     if (currentUser) {
-      void distributeConversationKey(created.id, participantIds, effectiveTenantId, currentUser.id);
+      void distributeConversationKey(created.id, participantIds);
     }
     await refreshRemote(() => true);
   };

@@ -1,5 +1,14 @@
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import { selectionFeedback } from "@/lib/haptics";
+import {
+  fontSizes,
+  fontWeights,
+  maxFontScale,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef } from "react";
 import {
@@ -12,6 +21,14 @@ import {
 } from "react-native";
 
 const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+const EMOJI_NAMES: Record<string, string> = {
+  "👍": "joinha",
+  "❤️": "coração",
+  "😂": "risada",
+  "😮": "surpresa",
+  "😢": "choro",
+  "🙏": "mãos juntas",
+};
 const EMOJI_ROW_HEIGHT = 56;
 const ACTIONS_ROW_HEIGHT = 56;
 const GAP = 8;
@@ -38,6 +55,81 @@ interface ReactionMenuProps {
   onCopy?: () => void;
 }
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: {
+      position: "absolute",
+      gap: spacing.sm,
+    },
+    menu: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xxs,
+      paddingHorizontal: spacing.sm,
+      height: EMOJI_ROW_HEIGHT,
+      backgroundColor: t.card,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: t.border,
+      shadowColor: t.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: t.shadowOpacity * 1.8,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    emojiButton: {
+      width: 40,
+      height: 40,
+      borderRadius: radius.pill,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    emojiButtonPressed: {
+      backgroundColor: t.muted,
+    },
+    emojiText: {
+      fontSize: fontSizes.largeTitle,
+    },
+    actionsRow: {
+      flexDirection: "row",
+      alignItems: "stretch",
+      gap: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      backgroundColor: t.card,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: t.border,
+      shadowColor: t.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: t.shadowOpacity * 1.4,
+      shadowRadius: 6,
+      elevation: 6,
+    },
+    actionButton: {
+      flex: 1,
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.xxs,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.xs,
+      borderRadius: radius.md,
+    },
+    actionButtonPressed: {
+      backgroundColor: t.muted,
+    },
+    actionLabel: {
+      fontSize: fontSizes.caption,
+      color: t.foreground,
+      fontWeight: fontWeights.medium,
+      textAlign: "center",
+    },
+    actionLabelDestructive: {
+      color: t.destructive,
+    },
+  });
+
 export function ReactionMenu({
   visible,
   targetX,
@@ -52,81 +144,7 @@ export function ReactionMenu({
   onCopy,
 }: ReactionMenuProps) {
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      container: {
-        position: "absolute",
-        gap: 8,
-      },
-      menu: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 2,
-        paddingHorizontal: 8,
-        height: EMOJI_ROW_HEIGHT,
-        backgroundColor: t.card,
-        borderRadius: 28,
-        borderWidth: 1,
-        borderColor: t.border,
-        shadowColor: t.shadow,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: t.shadowOpacity * 1.8,
-        shadowRadius: 8,
-        elevation: 8,
-      },
-      emojiButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      emojiButtonPressed: {
-        backgroundColor: t.muted,
-      },
-      emojiText: {
-        fontSize: 26,
-      },
-      actionsRow: {
-        flexDirection: "row",
-        alignItems: "stretch",
-        gap: 4,
-        paddingHorizontal: 6,
-        paddingVertical: 4,
-        backgroundColor: t.card,
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: t.border,
-        shadowColor: t.shadow,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: t.shadowOpacity * 1.4,
-        shadowRadius: 6,
-        elevation: 6,
-      },
-      actionButton: {
-        flex: 1,
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 2,
-        paddingVertical: 6,
-        paddingHorizontal: 4,
-        borderRadius: 14,
-      },
-      actionButtonPressed: {
-        backgroundColor: t.muted,
-      },
-      actionLabel: {
-        fontSize: 11,
-        color: t.foreground,
-        fontWeight: "500",
-        textAlign: "center",
-      },
-      actionLabelDestructive: {
-        color: t.destructive,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
   const scale = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -201,7 +219,11 @@ export function ReactionMenu({
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={onClose}
+        accessibilityLabel="Fechar menu da mensagem"
+      >
         <Animated.View
           style={[
             styles.container,
@@ -218,13 +240,24 @@ export function ReactionMenu({
             {QUICK_EMOJIS.map((emoji) => (
               <Pressable
                 key={emoji}
-                onPress={() => onEmojiSelect(emoji)}
+                onPress={() => {
+                  selectionFeedback();
+                  onEmojiSelect(emoji);
+                }}
+                hitSlop={{ top: 8, bottom: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Reagir com ${EMOJI_NAMES[emoji] ?? emoji}`}
                 style={({ pressed }) => [
                   styles.emojiButton,
                   pressed ? styles.emojiButtonPressed : null,
                 ]}
               >
-                <Text style={styles.emojiText}>{emoji}</Text>
+                <Text
+                  style={styles.emojiText}
+                  maxFontSizeMultiplier={maxFontScale.compact}
+                >
+                  {emoji}
+                </Text>
               </Pressable>
             ))}
           </View>
@@ -234,6 +267,8 @@ export function ReactionMenu({
                 <Pressable
                   key={action.key}
                   onPress={action.onPress}
+                  accessibilityRole="button"
+                  accessibilityLabel={action.label}
                   style={({ pressed }) => [
                     styles.actionButton,
                     pressed ? styles.actionButtonPressed : null,
@@ -247,6 +282,7 @@ export function ReactionMenu({
                     }
                   />
                   <Text
+                    maxFontSizeMultiplier={maxFontScale.compact}
                     style={[
                       styles.actionLabel,
                       action.destructive ? styles.actionLabelDestructive : null,

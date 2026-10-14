@@ -15,7 +15,7 @@ Text messages are encrypted on the device with a per-chat AES-GCM key (`@noble/c
 
 Messages are kept in a local SQLite database (`expo-sqlite`) and synced with the API. The chat screen supports replies, editing, reactions, voice messages, images, search, read receipts and day separators. Push notifications come through Expo.
 
-Audio and images are not end-to-end encrypted; the API protects them only by authorization.
+Audio and images are not end-to-end encrypted; the API protects them only by authorization and strips image metadata on upload. Logging out deletes the local messages, chats, conversation keys and media cache; the device key pair stays, so the same user gets their keys back from the key shares.
 
 ## Requirements
 
@@ -36,7 +36,6 @@ cp .env.example .env
 | --- | --- | --- |
 | `EXPO_PUBLIC_API_BASE_URL` | `http://localhost:3000` | HTTP API |
 | `EXPO_PUBLIC_API_WS_URL` | `ws://localhost:3000/realtime` | Realtime WebSocket |
-| `EXPO_PUBLIC_MEDIA_BASE_URL` | `http://localhost:3000` | Base of media URLs |
 
 On a physical device, use the machine's LAN address instead of `localhost` and start the API with `BIND_ADDR=0.0.0.0:3000`.
 
@@ -49,10 +48,11 @@ npm run android
 
 `npm run ios` does the same for iOS. After the first build, `npm start` serves the JavaScript to the installed development build.
 
-Check the code with ESLint:
+Check the code with ESLint and run the unit tests (Jest with `jest-expo`; they cover the crypto, search, reply previews, time formatting and the outbox locks):
 
 ```bash
 npm run lint
+npm test
 ```
 
 ## Structure
@@ -66,4 +66,11 @@ src/api/      HTTP and WebSocket clients for chat-family-api
 theme/        theme tokens and the light/dark picker
 ```
 
-EAS build profiles live in `eas.json`.
+EAS build profiles live in `eas.json`. Each profile reads the `EXPO_PUBLIC_*` variables from the EAS environment of the same name (`development`, `preview`, `production`), since `.env` is not uploaded with a build. Create them once per environment, for example:
+
+```bash
+eas env:create --environment production --name EXPO_PUBLIC_API_BASE_URL --value https://api.example.com --visibility plaintext
+eas env:create --environment production --name EXPO_PUBLIC_API_WS_URL --value wss://api.example.com/realtime --visibility plaintext
+```
+
+A release build on Android blocks plain `http://`, so production URLs need HTTPS/WSS.

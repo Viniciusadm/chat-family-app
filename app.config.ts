@@ -18,6 +18,7 @@ export default (): ExpoConfig => {
     },
     android: {
       package: ANDROID_PACKAGE,
+      allowBackup: false,
       adaptiveIcon: {
         backgroundColor: "#1fa85c",
         foregroundImage: "./assets/images/android-icon-foreground.png",
@@ -46,7 +47,12 @@ export default (): ExpoConfig => {
           },
         },
       ],
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          enableBackgroundRemoteNotifications: true,
+        },
+      ],
       [
         "expo-audio",
         {

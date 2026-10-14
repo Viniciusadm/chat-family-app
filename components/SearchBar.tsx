@@ -3,6 +3,13 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import {
+  fontSizes,
+  maxFontScale,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 
 interface SearchBarProps {
   value: string;
@@ -11,6 +18,43 @@ interface SearchBarProps {
   placeholder?: string;
 }
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    container: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.md,
+      backgroundColor: t.background,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: t.border,
+    },
+    field: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      height: 40,
+      borderRadius: radius.pill,
+      backgroundColor: t.muted,
+    },
+    input: {
+      flex: 1,
+      fontSize: fontSizes.bodySmall,
+      color: t.foreground,
+      paddingVertical: 0,
+    },
+    clearBtn: {
+      width: 24,
+      height: 24,
+      borderRadius: radius.pill,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    clearBtnPressed: {
+      opacity: 0.6,
+    },
+  });
+
 export function SearchBar({
   value,
   onChangeText,
@@ -18,43 +62,7 @@ export function SearchBar({
   placeholder = "Buscar em mensagens",
 }: SearchBarProps) {
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      container: {
-        paddingHorizontal: 16,
-        paddingTop: 8,
-        paddingBottom: 12,
-        backgroundColor: t.background,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: t.border,
-      },
-      field: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-        paddingHorizontal: 12,
-        height: 40,
-        borderRadius: 999,
-        backgroundColor: t.muted,
-      },
-      input: {
-        flex: 1,
-        fontSize: 15,
-        color: t.foreground,
-        paddingVertical: 0,
-      },
-      clearBtn: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      clearBtnPressed: {
-        opacity: 0.6,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
 
   const handleClear = () => {
     onChangeText("");
@@ -75,12 +83,14 @@ export function SearchBar({
           autoCapitalize="none"
           returnKeyType="search"
           accessibilityLabel="Campo de busca de mensagens"
+          maxFontSizeMultiplier={maxFontScale.compact}
         />
         {value.length > 0 ? (
           <Pressable
             onPress={handleClear}
             accessibilityLabel="Limpar busca"
-            hitSlop={8}
+            accessibilityRole="button"
+            hitSlop={10}
             style={({ pressed }) => [
               styles.clearBtn,
               pressed && styles.clearBtnPressed,

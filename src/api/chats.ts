@@ -38,7 +38,6 @@ export type MessageDto = {
   reply_to_sender_id?: string | null;
   reply_to_sender_name?: string | null;
   reply_to_type?: MessageType | null;
-  reply_to_preview?: string | null;
   created_at?: string;
   updated_at?: string;
   edited_at?: string | null;
@@ -98,10 +97,16 @@ export function markRead(chatId: string, readUpTo?: string) {
 
 export function listMessages(
   chatId: string,
-  params: { after?: string; changedAfter?: string; limit?: number } = {}
+  params: {
+    after?: string;
+    before?: string;
+    changedAfter?: string;
+    limit?: number;
+  } = {}
 ) {
   const qs = new URLSearchParams();
   if (params.after) qs.set("after", params.after);
+  if (params.before) qs.set("before", params.before);
   // Edits and soft deletes never move created_at, so they are only visible through this
   // cursor over updated_at.
   if (params.changedAfter) qs.set("changed_after", params.changedAfter);
@@ -168,7 +173,6 @@ export type MessageBody = {
   reply_to_sender_id?: string | null;
   reply_to_sender_name?: string | null;
   reply_to_type?: string | null;
-  reply_to_preview?: string | null;
 };
 
 export function replyToBody(replyTo?: MessageReplySnapshot | null) {
@@ -177,6 +181,5 @@ export function replyToBody(replyTo?: MessageReplySnapshot | null) {
     reply_to_sender_id: replyTo?.senderId ?? null,
     reply_to_sender_name: replyTo?.senderName ?? null,
     reply_to_type: replyTo?.type ?? null,
-    reply_to_preview: replyTo?.preview ?? null,
   };
 }

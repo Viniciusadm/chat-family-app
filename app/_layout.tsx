@@ -3,6 +3,7 @@ import "react-native-get-random-values";
 import { NotificationNavigation } from "@/components/NotificationNavigation";
 import { PermissionsGate } from "@/components/PermissionsGate";
 import { PushTokenSync } from "@/components/PushTokenSync";
+import { ToastProvider } from "@/components/Toast";
 import { AuthProvider } from "@/context/AuthContext";
 import { registerBackgroundNotificationTask } from "@/lib/backgroundNotifications";
 import { ThemeProvider, useTheme } from "@/theme/ThemeContext";
@@ -61,12 +62,14 @@ export default function RootLayout() {
     <ThemeProvider>
       <SafeAreaProvider>
         <KeyboardProvider>
-          <AuthProvider>
-            <PermissionsGate />
-            <PushTokenSync />
-            <ThemedChrome />
-            <RootLayoutNav />
-          </AuthProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <PermissionsGate />
+              <PushTokenSync />
+              <ThemedChrome />
+              <RootLayoutNav />
+            </AuthProvider>
+          </ToastProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
     </ThemeProvider>

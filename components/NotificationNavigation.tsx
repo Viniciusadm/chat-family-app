@@ -1,43 +1,86 @@
+import { useAuth } from "@/context/AuthContext";
 import * as Notifications from "expo-notifications";
-import { useRouter } from "expo-router";
-import { useEffect, useRef } from "react";
+import { usePathname, useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 
-function openChatFromData(
-  router: ReturnType<typeof useRouter>,
-  data: Record<string, unknown> | undefined
-) {
+interface ChatNotificationTarget {
+  chatId: string;
+  messageId?: string;
+}
+
+function chatTargetFromResponse(
+  response: Notifications.NotificationResponse
+): ChatNotificationTarget | null {
+  const data = response.notification.request.content.data as
+    | Record<string, unknown>
+    | undefined;
   const chatId = data && typeof data.chatId === "string" ? data.chatId : null;
-  if (!chatId) return;
+  if (!chatId) return null;
   const messageId = typeof data?.messageId === "string" ? data.messageId : undefined;
-  router.push({
-    pathname: "/(protected)/chat/[chatId]",
-    params: messageId ? { chatId, messageId } : { chatId },
-  });
+  return { chatId, messageId };
 }
 
 export function NotificationNavigation() {
   const router = useRouter();
-  const coldStartHandled = useRef(false);
+  const pathname = usePathname();
+  const {
+    currentUser,
+    deviceApproved,
+    loading,
+    sessionReady,
+    needsPasswordRestore,
+  } = useAuth();
+  const [pendingTarget, setPendingTarget] = useState<ChatNotificationTarget | null>(null);
+  const handledResponseIds = useRef(new Set<string>());
+
+  const canNavigate =
+    !loading &&
+    sessionReady &&
+    currentUser != null &&
+    deviceApproved === true &&
+    !needsPasswordRestore;
 
   useEffect(() => {
-    void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (coldStartHandled.current || !response) return;
-      coldStartHandled.current = true;
-      openChatFromData(
-        router,
-        response.notification.request.content.data as Record<string, unknown>
-      );
-    });
+    let active = true;
 
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      openChatFromData(
-        router,
-        response.notification.request.content.data as Record<string, unknown>
-      );
-    });
+    const acceptResponse = (response: Notifications.NotificationResponse) => {
+      const responseId = `${response.notification.request.identifier}:${response.notification.date}`;
+      if (handledResponseIds.current.has(responseId)) return;
+      handledResponseIds.current.add(responseId);
+      void Notifications.clearLastNotificationResponseAsync().catch(() => {});
+      const target = chatTargetFromResponse(response);
+      if (target && active) setPendingTarget(target);
+    };
 
-    return () => sub.remove();
-  }, [router]);
+    void Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) acceptResponse(response);
+      })
+      .catch(() => {});
+
+    const sub = Notifications.addNotificationResponseReceivedListener(acceptResponse);
+
+    return () => {
+      active = false;
+      sub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingTarget || !canNavigate) return;
+    const { chatId, messageId } = pendingTarget;
+    setPendingTarget(null);
+
+    if (pathname === `/chat/${chatId}`) {
+      if (messageId) router.setParams({ messageId });
+      return;
+    }
+
+    router.push({
+      pathname: "/(protected)/chat/[chatId]",
+      params: messageId ? { chatId, messageId } : { chatId },
+    });
+  }, [canNavigate, pathname, pendingTarget, router]);
 
   return null;
 }

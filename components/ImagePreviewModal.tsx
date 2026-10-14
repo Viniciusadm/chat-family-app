@@ -1,4 +1,5 @@
 import { useTheme } from "@/theme/ThemeContext";
+import { fontSizes, fontWeights, radius, spacing } from "@/theme/tokens";
 import { useThemedStyles } from "@/theme/useThemedStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -37,15 +38,15 @@ export function ImagePreviewModal({
         backgroundColor: t.viewerBackdrop,
       },
       topBar: {
-        paddingTop: insets.top + 12,
-        paddingHorizontal: 16,
+        paddingTop: insets.top + spacing.md,
+        paddingHorizontal: spacing.lg,
         flexDirection: "row",
         alignItems: "center",
       },
       iconBtn: {
         width: 44,
         height: 44,
-        borderRadius: 22,
+        borderRadius: radius.pill,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: t.overlayLight,
@@ -55,23 +56,23 @@ export function ImagePreviewModal({
         width: "100%",
       },
       bottomBar: {
-        paddingHorizontal: 24,
-        paddingTop: 24,
-        paddingBottom: insets.bottom + 24,
+        paddingHorizontal: spacing.xxl,
+        paddingTop: spacing.xxl,
+        paddingBottom: insets.bottom + spacing.xxl,
         flexDirection: "row",
         alignItems: "center",
-        gap: 16,
+        gap: spacing.lg,
       },
       hint: {
         flex: 1,
         color: "#ffffff",
-        fontSize: 16,
-        fontWeight: "500",
+        fontSize: fontSizes.body,
+        fontWeight: fontWeights.medium,
       },
       sendBtn: {
         width: 52,
         height: 52,
-        borderRadius: 26,
+        borderRadius: radius.pill,
         backgroundColor: t.primary,
         alignItems: "center",
         justifyContent: "center",
@@ -92,7 +93,13 @@ export function ImagePreviewModal({
     >
       <View style={styles.root}>
         <View style={styles.topBar}>
-          <Pressable onPress={onCancel} hitSlop={12} style={styles.iconBtn}>
+          <Pressable
+            onPress={onCancel}
+            hitSlop={12}
+            style={styles.iconBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Cancelar envio da imagem"
+          >
             <Ionicons name="close" size={26} color="#ffffff" />
           </Pressable>
         </View>
@@ -106,6 +113,9 @@ export function ImagePreviewModal({
           <Pressable
             onPress={onConfirm}
             disabled={sending}
+            accessibilityRole="button"
+            accessibilityLabel="Enviar imagem"
+            accessibilityState={{ disabled: sending, busy: sending }}
             style={({ pressed }) => [
               styles.sendBtn,
               (pressed || sending) && styles.pressed,

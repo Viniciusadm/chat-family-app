@@ -87,3 +87,7 @@ export function putChatKeyShare(deviceId: string, chatId: string, body: {
     { method: "PUT", body },
   );
 }
+
+export function claimChatKey(chatId: string) {
+  return apiFetch<{ granted: boolean }>(`/chats/${chatId}/key-claim`, { method: "POST" });
+}

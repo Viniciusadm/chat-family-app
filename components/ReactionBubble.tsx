@@ -1,4 +1,12 @@
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import {
+  fontSizes,
+  fontWeights,
+  maxFontScale,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import type { Reaction } from "@/types/chat";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -24,49 +32,50 @@ function groupReactions(reactions: Reaction[], currentUserId: string) {
   }));
 }
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    wrap: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.xs,
+    },
+    chip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xxs,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.md,
+      backgroundColor: t.muted,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    chipMine: {
+      backgroundColor: t.bubbleSelf,
+      borderColor: t.primary,
+    },
+    chipPressed: {
+      opacity: 0.7,
+    },
+    emoji: {
+      fontSize: fontSizes.subhead,
+    },
+    count: {
+      fontSize: fontSizes.footnote,
+      fontWeight: fontWeights.semibold,
+      color: t.mutedForeground,
+    },
+    countMine: {
+      color: t.primary,
+    },
+  });
+
 export const ReactionBubble = React.memo(function ReactionBubble({
   reactions,
   currentUserId,
   onPress,
 }: ReactionBubbleProps) {
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      wrap: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: 4,
-      },
-      chip: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 2,
-        paddingHorizontal: 6,
-        paddingVertical: 3,
-        borderRadius: 12,
-        backgroundColor: t.muted,
-        borderWidth: 1,
-        borderColor: t.border,
-      },
-      chipMine: {
-        backgroundColor: t.bubbleSelf,
-        borderColor: t.primary,
-      },
-      chipPressed: {
-        opacity: 0.7,
-      },
-      emoji: {
-        fontSize: 14,
-      },
-      count: {
-        fontSize: 12,
-        fontWeight: "600",
-        color: t.mutedForeground,
-      },
-      countMine: {
-        color: t.primary,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
   if (reactions.length === 0) return null;
 
   const grouped = groupReactions(reactions, currentUserId);
@@ -77,14 +86,26 @@ export const ReactionBubble = React.memo(function ReactionBubble({
         <Pressable
           key={emoji}
           onPress={onPress}
+          hitSlop={{ top: 8, bottom: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`${emoji} ${count}${hasMine ? ", inclui sua reação" : ""}`}
+          accessibilityHint="Ver quem reagiu"
           style={({ pressed }) => [
             styles.chip,
             hasMine ? styles.chipMine : null,
             pressed ? styles.chipPressed : null,
           ]}
         >
-          <Text style={styles.emoji}>{emoji}</Text>
-          <Text style={[styles.count, hasMine ? styles.countMine : null]}>
+          <Text
+            style={styles.emoji}
+            maxFontSizeMultiplier={maxFontScale.compact}
+          >
+            {emoji}
+          </Text>
+          <Text
+            style={[styles.count, hasMine ? styles.countMine : null]}
+            maxFontSizeMultiplier={maxFontScale.compact}
+          >
             {count}
           </Text>
         </Pressable>

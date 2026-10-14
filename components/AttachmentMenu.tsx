@@ -1,4 +1,5 @@
 import { useTheme } from "@/theme/ThemeContext";
+import { fontSizes, fontWeights, radius, spacing } from "@/theme/tokens";
 import { useThemedStyles } from "@/theme/useThemedStyles";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
@@ -29,18 +30,18 @@ export function AttachmentMenu({
       },
       sheet: {
         backgroundColor: t.background,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        paddingHorizontal: 24,
-        paddingTop: 24,
-        paddingBottom: insets.bottom + 24,
+        borderTopLeftRadius: radius.xxl,
+        borderTopRightRadius: radius.xxl,
+        paddingHorizontal: spacing.xxl,
+        paddingTop: spacing.xxl,
+        paddingBottom: insets.bottom + spacing.xxl,
         flexDirection: "row",
-        gap: 24,
+        gap: spacing.xxl,
       },
       option: {
         flex: 1,
         alignItems: "center",
-        gap: 8,
+        gap: spacing.sm,
       },
       pressed: {
         opacity: 0.72,
@@ -48,13 +49,13 @@ export function AttachmentMenu({
       iconCircle: {
         width: 56,
         height: 56,
-        borderRadius: 28,
+        borderRadius: radius.pill,
         alignItems: "center",
         justifyContent: "center",
       },
       optionLabel: {
-        fontSize: 14,
-        fontWeight: "600",
+        fontSize: fontSizes.subhead,
+        fontWeight: fontWeights.semibold,
         color: t.foreground,
       },
     })
@@ -67,10 +68,15 @@ export function AttachmentMenu({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityLabel="Fechar menu de anexos"
+      >
         <View style={styles.sheet}>
           <Pressable
             style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+            accessibilityRole="button"
             onPress={() => {
               onClose();
               onChooseCamera();
@@ -86,6 +92,7 @@ export function AttachmentMenu({
 
           <Pressable
             style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+            accessibilityRole="button"
             onPress={() => {
               onClose();
               onChooseGallery();

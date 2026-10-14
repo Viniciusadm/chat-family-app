@@ -1,28 +1,5 @@
 import type { LocalTimestamp } from "@/lib/localTimestamp";
 
-export interface TenantDoc {
-  name: string;
-  ownerId: string;
-  createdAt: string;
-}
-
-export interface MemberDoc {
-  tenantId: string;
-  name: string;
-  role: "adult" | "child";
-  loginCode: string | null;
-  createdAt: string;
-  photoUrl?: string | null;
-  photoPath?: string | null;
-}
-
-export interface LoginCodeDoc {
-  memberId: string;
-  tenantId: string;
-  name: string;
-  role: "adult" | "child";
-}
-
 export interface PasswordVerifierField {
   ciphertext: string;
   iv: string;
@@ -35,88 +12,15 @@ export interface KeyBackupDoc {
   createdAt: string;
 }
 
-export interface UserDoc {
-  memberId?: string;
-  tenantId: string;
-  name: string;
-  role: "adult" | "child";
-  createdAt: string;
-  chatIndexBuiltAt?: string;
-  photoUrl?: string | null;
-  photoPath?: string | null;
-  passwordSalt?: string;
-  passwordVerifier?: PasswordVerifierField;
-}
-
-export interface DeviceDoc {
-  tenantId: string;
-  userId: string;
-  approved: boolean;
-  active?: boolean;
-  pushToken: string;
-  publicKey?: string;
-  createdAt: string;
-  lastActiveAt?: string;
-  sessionAt?: string;
-}
-
 export interface KeyShareDoc {
   ephemeralPublicKey: string;
   iv: string;
   ciphertext: string;
-  wrappedBy: string;
-  createdAt: string;
-}
-
-export interface ChatDoc {
-  tenantId: string;
-  participants: string[];
-  isGroup: boolean;
-  name: string;
-  photoUrl?: string | null;
-  photoPath?: string | null;
-  lastMessageText: string | null;
-  lastMessageCiphertext: string | null;
-  lastMessageIv: string | null;
-  lastMessageAt: string | null;
-  lastMessageType: "text" | "audio" | "image" | null;
-  createdAt: string;
-  updatedAt: string;
-  readUpTo?: Record<string, LocalTimestamp>;
-  unreadBy?: Record<string, number>;
-}
-
-export interface MessageDoc {
-  tenantId: string;
-  senderId: string;
-  text: string | null;
-  audioUrl: string | null;
-  audioDuration: number | null;
-  imageUrl?: string | null;
-  thumbnailUrl?: string | null;
-  imageWidth?: number | null;
-  imageHeight?: number | null;
-  imageFileSize?: number | null;
-  ciphertext?: string | null;
-  iv?: string | null;
-  encVersion?: number;
-  replyTo?: MessageReplySnapshot | null;
-  createdAt: string;
-  editedAt?: string | null;
-  isDeleted?: boolean;
-  deletedAt?: string | null;
 }
 
 export interface Reaction {
   userId: string;
   emoji: string;
-}
-
-export interface ReactionDoc {
-  messageId: string;
-  userId: string;
-  emoji: string;
-  updatedAt: string;
 }
 
 export type UserRole = "adult" | "child";

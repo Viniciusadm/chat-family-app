@@ -1,46 +1,72 @@
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { LoadingDots } from "@/components/LoadingDots";
+import { ChildCodeModal } from "@/components/login/ChildCodeModal";
+import { LoginForm } from "@/components/login/LoginForm";
+import { RegisterForm } from "@/components/login/RegisterForm";
+import { authErrorMessage } from "@/components/login/authErrorMessage";
 import { useAuth } from "@/context/AuthContext";
-import { ApiError } from "@/src/api/client";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import {
+  fontSizes,
+  fontWeights,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
-  Linking,
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 type ViewMode = "login" | "register";
 
-function authErrorMessage(e: unknown, fallback: string): string {
-  if (e instanceof ApiError) {
-    if (e.status === 0) {
-      return e.message;
-    }
-    if (e.status === 400) {
-      return "Confira os dados informados. A senha precisa ter pelo menos 8 caracteres.";
-    }
-    if (e.status === 401) {
-      return "E-mail ou senha inválidos.";
-    }
-    if (e.status === 409) {
-      return "Este e-mail já possui uma conta. Faça login ou use outro e-mail.";
-    }
-    if (e.status >= 500) {
-      return "Falha interna no servidor. Tente novamente em instantes.";
-    }
-  }
-  return e instanceof Error ? e.message : fallback;
-}
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    loadingScreen: {
+      flex: 1,
+      backgroundColor: t.background,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    screen: {
+      flex: 1,
+      backgroundColor: t.background,
+    },
+    scroll: {
+      flexGrow: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: spacing.xxl,
+      paddingTop: spacing.giant,
+      paddingBottom: spacing.xxxl,
+      width: "100%",
+    },
+    logoWrap: {
+      alignItems: "center",
+      marginBottom: spacing.xxxl,
+    },
+    logoCircle: {
+      width: 64,
+      height: 64,
+      borderRadius: radius.pill,
+      backgroundColor: t.primaryTint,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    title: {
+      marginTop: spacing.md,
+      fontSize: fontSizes.largeTitle,
+      fontWeight: fontWeights.semibold,
+      color: t.foreground,
+    },
+  });
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -49,10 +75,6 @@ export default function LoginScreen() {
     deviceApproved,
     loading,
     sessionReady,
-    needsPushToken,
-    pushTokenError,
-    retryDeviceRegistration,
-    logout,
     loginWithEmail,
     registerWithEmail,
     loginWithChildCode,
@@ -60,213 +82,7 @@ export default function LoginScreen() {
     clearDeletedAccountMessage,
   } = useAuth();
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      loadingScreen: {
-        flex: 1,
-        backgroundColor: t.background,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      pushGate: {
-        flex: 1,
-        backgroundColor: t.background,
-        paddingHorizontal: 24,
-        justifyContent: "center",
-        gap: 16,
-      },
-      pushGateTitle: {
-        fontSize: 22,
-        fontWeight: "600",
-        color: t.foreground,
-        textAlign: "center",
-      },
-      pushGateSub: {
-        fontSize: 15,
-        color: t.mutedForeground,
-        textAlign: "center",
-        lineHeight: 22,
-      },
-      secondaryBtn: {
-        borderWidth: 1,
-        borderColor: t.border,
-        borderRadius: 12,
-        paddingVertical: 14,
-        alignItems: "center",
-      },
-      secondaryBtnText: {
-        color: t.foreground,
-        fontSize: 16,
-        fontWeight: "600",
-      },
-      textLink: {
-        paddingVertical: 12,
-        alignItems: "center",
-      },
-      textLinkLabel: {
-        fontSize: 15,
-        color: t.mutedForeground,
-      },
-      screen: {
-        flex: 1,
-        backgroundColor: t.background,
-      },
-      scroll: {
-        flexGrow: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        paddingHorizontal: 24,
-        paddingTop: 48,
-        paddingBottom: 32,
-        width: "100%",
-      },
-      logoWrap: {
-        alignItems: "center",
-        marginBottom: 32,
-      },
-      logoCircle: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        backgroundColor: t.primaryTint,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      title: {
-        marginTop: 12,
-        fontSize: 24,
-        fontWeight: "600",
-        color: t.foreground,
-      },
-      form: {
-        gap: 12,
-        maxWidth: 400,
-        width: "100%",
-        alignSelf: "center",
-      },
-      input: {
-        borderWidth: 1,
-        borderColor: t.inputBorder,
-        borderRadius: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        fontSize: 16,
-        color: t.foreground,
-        backgroundColor: t.background,
-      },
-      error: {
-        fontSize: 14,
-        color: t.destructive,
-      },
-      primaryBtn: {
-        backgroundColor: t.primary,
-        borderRadius: 12,
-        paddingVertical: 14,
-        alignItems: "center",
-      },
-      primaryBtnText: {
-        color: t.primaryForeground,
-        fontSize: 16,
-        fontWeight: "600",
-      },
-      ghostBtn: {
-        paddingVertical: 12,
-        alignItems: "center",
-      },
-      ghostBtnText: {
-        color: t.mutedForeground,
-        fontSize: 16,
-      },
-      outlineBtn: {
-        borderWidth: 1,
-        borderColor: t.border,
-        borderRadius: 12,
-        paddingVertical: 14,
-        alignItems: "center",
-      },
-      outlineBtnText: {
-        color: t.foreground,
-        fontSize: 16,
-      },
-      dividerRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
-        marginVertical: 4,
-      },
-      divider: {
-        flex: 1,
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: t.border,
-      },
-      dividerText: {
-        fontSize: 12,
-        color: t.mutedForeground,
-      },
-      backLink: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 4,
-        marginBottom: 4,
-      },
-      backLinkText: {
-        fontSize: 14,
-        color: t.mutedForeground,
-      },
-      pressed: {
-        opacity: 0.85,
-      },
-      btnDisabled: {
-        opacity: 0.5,
-      },
-      modalRoot: {
-        flex: 1,
-        justifyContent: "center",
-        paddingHorizontal: 24,
-      },
-      modalOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: t.modalBackdrop,
-      },
-      modalCard: {
-        backgroundColor: t.card,
-        borderRadius: 16,
-        padding: 20,
-        shadowColor: t.shadow,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: t.shadowOpacity * 1.5,
-        shadowRadius: 12,
-        elevation: 8,
-      },
-      modalTitle: {
-        fontSize: 18,
-        fontWeight: "600",
-        color: t.foreground,
-        marginBottom: 16,
-      },
-      modalHint: {
-        fontSize: 12,
-        color: t.mutedForeground,
-        marginTop: 8,
-      },
-      modalActions: {
-        flexDirection: "row",
-        justifyContent: "flex-end",
-        gap: 12,
-        marginTop: 20,
-      },
-      modalGhost: {
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-      },
-      modalPrimary: {
-        backgroundColor: t.primary,
-        borderRadius: 10,
-        paddingVertical: 10,
-        paddingHorizontal: 18,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
 
   const [view, setView] = useState<ViewMode>("login");
   const [email, setEmail] = useState("");
@@ -275,17 +91,15 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showChildModal, setShowChildModal] = useState(false);
-  const [childCode, setChildCode] = useState("");
-  const [childError, setChildError] = useState("");
 
   useEffect(() => {
     if (!deletedAccountMessage) return;
-    Alert.alert("", deletedAccountMessage);
+    Alert.alert("Conta removida", deletedAccountMessage);
     clearDeletedAccountMessage();
   }, [clearDeletedAccountMessage, deletedAccountMessage]);
 
   useEffect(() => {
-    if (loading || !sessionReady || needsPushToken) return;
+    if (loading || !sessionReady) return;
     if (deviceApproved === false) {
       router.replace("/aguardando");
     } else if (currentUser && deviceApproved === true) {
@@ -296,49 +110,8 @@ export default function LoginScreen() {
     currentUser,
     deviceApproved,
     sessionReady,
-    needsPushToken,
     router,
   ]);
-
-  if (loading && !sessionReady) {
-    return (
-      <ScreenContainer style={styles.loadingScreen} edges={["top", "bottom"]}>
-        <LoadingDots />
-      </ScreenContainer>
-    );
-  }
-
-  if (currentUser && sessionReady && needsPushToken) {
-    return (
-      <ScreenContainer style={styles.pushGate} edges={["top", "bottom"]}>
-        <Text style={styles.pushGateTitle}>Notificações necessárias</Text>
-        {pushTokenError ? (
-          <Text style={styles.pushGateSub}>{pushTokenError}</Text>
-        ) : (
-          <>
-            <Text style={styles.pushGateSub}>
-              Ative as notificações para este app nas configurações do sistema e tente novamente.
-            </Text>
-            <Pressable
-              style={styles.primaryBtn}
-              onPress={() => Linking.openSettings()}
-            >
-              <Text style={styles.primaryBtnText}>Abrir configurações</Text>
-            </Pressable>
-          </>
-        )}
-        <Pressable
-          style={styles.secondaryBtn}
-          onPress={() => retryDeviceRegistration()}
-        >
-          <Text style={styles.secondaryBtnText}>Tentar novamente</Text>
-        </Pressable>
-        <Pressable style={styles.textLink} onPress={() => logout()}>
-          <Text style={styles.textLinkLabel}>Sair</Text>
-        </Pressable>
-      </ScreenContainer>
-    );
-  }
 
   if (loading) {
     return (
@@ -366,7 +139,7 @@ export default function LoginScreen() {
     setError("");
     setBusy(true);
     try {
-      await loginWithEmail(email.trim(), password.trim());
+      await loginWithEmail(email.trim(), password);
     } catch (e: unknown) {
       setError(authErrorMessage(e, "Erro ao entrar"));
     } finally {
@@ -379,7 +152,7 @@ export default function LoginScreen() {
     setError("");
     setBusy(true);
     try {
-      await registerWithEmail(email.trim(), password.trim(), name.trim());
+      await registerWithEmail(email.trim(), password, name.trim());
     } catch (e: unknown) {
       setError(authErrorMessage(e, "Erro ao criar conta"));
     } finally {
@@ -387,17 +160,12 @@ export default function LoginScreen() {
     }
   };
 
-  const handleChildLogin = async () => {
-    if (!childCode.trim()) return;
-    setChildError("");
+  const handleChildLogin = async (code: string) => {
     setBusy(true);
     try {
-      await loginWithChildCode(childCode.trim());
+      await loginWithChildCode(code);
       setShowChildModal(false);
-      setChildCode("");
       router.replace("/aguardando");
-    } catch (e: unknown) {
-      setChildError(authErrorMessage(e, "Erro ao entrar"));
     } finally {
       setBusy(false);
     }
@@ -421,193 +189,39 @@ export default function LoginScreen() {
         </View>
 
         {view === "login" ? (
-          <View style={styles.form}>
-            <TextInput
-              style={styles.input}
-              placeholder="E-mail"
-              placeholderTextColor={theme.inputPlaceholder}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Senha"
-              placeholderTextColor={theme.inputPlaceholder}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoComplete="password"
-            />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable
-              onPress={() => void handleLogin()}
-              disabled={
-                busy || !email.trim() || !password.trim()
-              }
-              style={({ pressed }) => [
-                styles.primaryBtn,
-                pressed && styles.pressed,
-                (busy || !email.trim() || !password.trim()) &&
-                  styles.btnDisabled,
-              ]}
-            >
-              <Text style={styles.primaryBtnText}>Entrar</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => switchView("register")}
-              disabled={busy}
-              style={({ pressed }) => [
-                styles.ghostBtn,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.ghostBtnText}>Criar conta</Text>
-            </Pressable>
-            <View style={styles.dividerRow}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>ou</Text>
-              <View style={styles.divider} />
-            </View>
-            <Pressable
-              onPress={() => setShowChildModal(true)}
-              disabled={busy}
-              style={({ pressed }) => [
-                styles.outlineBtn,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.outlineBtnText}>Entrar como criança</Text>
-            </Pressable>
-          </View>
+          <LoginForm
+            email={email}
+            password={password}
+            error={error}
+            busy={busy}
+            onChangeEmail={setEmail}
+            onChangePassword={setPassword}
+            onSubmit={() => void handleLogin()}
+            onCreateAccount={() => switchView("register")}
+            onChildLogin={() => setShowChildModal(true)}
+          />
         ) : (
-          <View style={styles.form}>
-            <Pressable
-              onPress={() => switchView("login")}
-              style={styles.backLink}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={18}
-                color={theme.mutedForeground}
-              />
-              <Text style={styles.backLinkText}>Voltar para login</Text>
-            </Pressable>
-            <TextInput
-              style={styles.input}
-              placeholder="Seu nome"
-              placeholderTextColor={theme.inputPlaceholder}
-              value={name}
-              onChangeText={setName}
-              autoComplete="name"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="E-mail"
-              placeholderTextColor={theme.inputPlaceholder}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Senha"
-              placeholderTextColor={theme.inputPlaceholder}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoComplete="password-new"
-            />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable
-              onPress={() => void handleRegister()}
-              disabled={
-                busy ||
-                !name.trim() ||
-                !email.trim() ||
-                !password.trim()
-              }
-              style={({ pressed }) => [
-                styles.primaryBtn,
-                pressed && styles.pressed,
-                (busy ||
-                  !name.trim() ||
-                  !email.trim() ||
-                  !password.trim()) &&
-                  styles.btnDisabled,
-              ]}
-            >
-              <Text style={styles.primaryBtnText}>Criar conta</Text>
-            </Pressable>
-          </View>
+          <RegisterForm
+            name={name}
+            email={email}
+            password={password}
+            error={error}
+            busy={busy}
+            onChangeName={setName}
+            onChangeEmail={setEmail}
+            onChangePassword={setPassword}
+            onSubmit={() => void handleRegister()}
+            onBack={() => switchView("login")}
+          />
         )}
       </ScrollView>
 
-      <Modal
+      <ChildCodeModal
         visible={showChildModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setShowChildModal(false);
-          setChildError("");
-        }}
-      >
-        <View style={styles.modalRoot}>
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => {
-              setShowChildModal(false);
-              setChildError("");
-            }}
-          />
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Entrar como criança</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Código do usuário"
-              placeholderTextColor={theme.inputPlaceholder}
-              value={childCode}
-              onChangeText={setChildCode}
-              autoCapitalize="characters"
-            />
-            {childError ? (
-              <Text style={styles.error}>{childError}</Text>
-            ) : null}
-            <Text style={styles.modalHint}>
-              Peça o código para um responsável
-            </Text>
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => {
-                  setShowChildModal(false);
-                  setChildError("");
-                }}
-                style={({ pressed }) => [
-                  styles.modalGhost,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.ghostBtnText}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void handleChildLogin()}
-                disabled={busy || !childCode.trim()}
-                style={({ pressed }) => [
-                  styles.modalPrimary,
-                  pressed && styles.pressed,
-                  (busy || !childCode.trim()) && styles.btnDisabled,
-                ]}
-              >
-                <Text style={styles.primaryBtnText}>Entrar</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        busy={busy}
+        onClose={() => setShowChildModal(false)}
+        onSubmit={handleChildLogin}
+      />
     </ScreenContainer>
   );
 }

@@ -1,4 +1,11 @@
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import {
+  fontSizes,
+  fontWeights,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import type { Reaction } from "@/types/chat";
 import React, { useMemo } from "react";
 import {
@@ -19,6 +26,104 @@ interface ReactionsDialogProps {
   onClose: () => void;
 }
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: t.modalBackdrop,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: spacing.xxxl,
+    },
+    card: {
+      width: "100%",
+      maxWidth: 320,
+      maxHeight: "80%",
+      backgroundColor: t.card,
+      borderRadius: radius.xl,
+      padding: spacing.xl,
+      shadowColor: t.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: t.shadowOpacity * 2.5,
+      shadowRadius: 12,
+      elevation: 10,
+    },
+    title: {
+      fontSize: fontSizes.headline,
+      fontWeight: fontWeights.bold,
+      color: t.foreground,
+      textAlign: "center",
+      marginBottom: spacing.lg,
+    },
+    barRow: {
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "flex-end",
+      gap: spacing.xs,
+      marginBottom: spacing.xl,
+      paddingBottom: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: t.border,
+    },
+    barItem: {
+      alignItems: "center",
+      gap: spacing.xs,
+    },
+    barEmoji: {
+      fontSize: fontSizes.title2,
+    },
+    barFill: {
+      height: 4,
+      borderRadius: radius.pill,
+      backgroundColor: t.primary,
+      minWidth: 8,
+    },
+    barCount: {
+      fontSize: fontSizes.footnote,
+      fontWeight: fontWeights.semibold,
+      color: t.mutedForeground,
+    },
+    list: {
+      maxHeight: 260,
+    },
+    entry: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: spacing.md,
+    },
+    entryLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    entryEmoji: {
+      fontSize: fontSizes.title,
+    },
+    entryName: {
+      fontSize: fontSizes.bodySmall,
+      color: t.foreground,
+      fontWeight: fontWeights.medium,
+    },
+    removeButton: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.sm,
+    },
+    removeButtonPressed: {
+      backgroundColor: t.muted,
+    },
+    removeText: {
+      fontSize: fontSizes.footnote,
+      color: t.destructive,
+      fontWeight: fontWeights.medium,
+    },
+    divider: {
+      height: 1,
+      backgroundColor: t.border,
+    },
+  });
+
 export function ReactionsDialog({
   visible,
   reactions,
@@ -27,105 +132,8 @@ export function ReactionsDialog({
   onRemoveReaction,
   onClose,
 }: ReactionsDialogProps) {
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      backdrop: {
-        flex: 1,
-        backgroundColor: t.modalBackdrop,
-        justifyContent: "center",
-        alignItems: "center",
-        padding: 32,
-      },
-      card: {
-        width: "100%",
-        maxWidth: 320,
-        maxHeight: "80%",
-        backgroundColor: t.card,
-        borderRadius: 20,
-        padding: 20,
-        shadowColor: t.shadow,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: t.shadowOpacity * 2.5,
-        shadowRadius: 12,
-        elevation: 10,
-      },
-      title: {
-        fontSize: 17,
-        fontWeight: "700",
-        color: t.foreground,
-        textAlign: "center",
-        marginBottom: 16,
-      },
-      barRow: {
-        flexDirection: "row",
-        justifyContent: "center",
-        alignItems: "flex-end",
-        gap: 6,
-        marginBottom: 20,
-        paddingBottom: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: t.border,
-      },
-      barItem: {
-        alignItems: "center",
-        gap: 4,
-      },
-      barEmoji: {
-        fontSize: 22,
-      },
-      barFill: {
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: t.primary,
-        minWidth: 8,
-      },
-      barCount: {
-        fontSize: 12,
-        fontWeight: "600",
-        color: t.mutedForeground,
-      },
-      list: {
-        maxHeight: 260,
-      },
-      entry: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        paddingVertical: 10,
-      },
-      entryLeft: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-      },
-      entryEmoji: {
-        fontSize: 20,
-      },
-      entryName: {
-        fontSize: 15,
-        color: t.foreground,
-        fontWeight: "500",
-      },
-      removeButton: {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
-      },
-      removeButtonPressed: {
-        backgroundColor: t.muted,
-      },
-      removeText: {
-        fontSize: 12,
-        color: t.destructive,
-        fontWeight: "500",
-      },
-      divider: {
-        height: 1,
-        backgroundColor: t.border,
-      },
-    })
-  );
-  const { emojiBar, entries } = useMemo(() => {
+  const styles = useThemedStyles(createStyles);
+  const { emojiBar, emojiCounts, maxEmojiCount, entries } = useMemo(() => {
     const counts = new Map<string, number>();
     const userOrder: Reaction[] = [];
     for (const r of reactions) {
@@ -146,7 +154,12 @@ export function ReactionsDialog({
       ...others.map((r) => ({ ...r, isOwn: false as const })),
     ];
 
-    return { emojiBar: sortedEmojis, entries };
+    return {
+      emojiBar: sortedEmojis,
+      emojiCounts: counts,
+      maxEmojiCount: Math.max(0, ...counts.values()),
+      entries,
+    };
   }, [reactions, currentUserId]);
 
   const total = reactions.length;
@@ -158,20 +171,27 @@ export function ReactionsDialog({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.card} onPress={() => {}}>
-          <Text style={styles.title}>{total} reaç{total !== 1 ? "ões" : "ão"}</Text>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityLabel="Fechar reações"
+      >
+        <Pressable style={styles.card} onPress={() => {}} accessible={false}>
+          <Text style={styles.title} accessibilityRole="header">{total} reaç{total !== 1 ? "ões" : "ão"}</Text>
 
           <View style={styles.barRow}>
             {emojiBar.map((emoji) => {
-              const count = reactions.filter((r) => r.emoji === emoji).length;
+              const count = emojiCounts.get(emoji) ?? 0;
               const barWidth = emojiBar.length === 1
                 ? 100
-                : (count / Math.max(...emojiBar.map((e) =>
-                    reactions.filter((r) => r.emoji === e).length
-                  ))) * 100;
+                : (count / maxEmojiCount) * 100;
               return (
-                <View key={emoji} style={styles.barItem}>
+                <View
+                  key={emoji}
+                  style={styles.barItem}
+                  accessible
+                  accessibilityLabel={`${emoji} ${count}`}
+                >
                   <Text style={styles.barEmoji}>{emoji}</Text>
                   <View
                     style={[
@@ -204,6 +224,9 @@ export function ReactionsDialog({
                         onRemoveReaction();
                         onClose();
                       }}
+                      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remover sua reação ${entry.emoji}`}
                       style={({ pressed }) => [
                         styles.removeButton,
                         pressed && styles.removeButtonPressed,

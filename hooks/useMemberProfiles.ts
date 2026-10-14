@@ -28,6 +28,58 @@ function membersToProfiles(members: AppMember[]): Record<string, MemberProfile> 
   );
 }
 
+const REMOTE_REFRESH_TTL_MS = 60_000;
+
+let lastRemoteRefresh: { tenantId: string; at: number } | null = null;
+let inFlightRemoteRefresh: { tenantId: string; promise: Promise<void> } | null = null;
+let remoteRefreshRerunRequested = false;
+
+realtimeClient.subscribe((event) => {
+  if (event.type !== "member.updated") return;
+  lastRemoteRefresh = null;
+  if (inFlightRemoteRefresh) remoteRefreshRerunRequested = true;
+});
+
+async function fetchRemoteMembers(tenantId: string) {
+  const rows = await listMembers();
+  const members = rows.map((data): AppMember => ({
+    id: data.id,
+    tenantId,
+    name: data.name,
+    role: data.role,
+    loginCode: data.login_code ?? null,
+    photoUrl: data.photo_url ?? null,
+    photoPath: data.photo_path ?? null,
+  }));
+  await AdminRepository.replaceMembers(tenantId, members);
+}
+
+function refreshRemoteMembers(tenantId: string): Promise<void> {
+  if (inFlightRemoteRefresh?.tenantId === tenantId) {
+    return inFlightRemoteRefresh.promise;
+  }
+  if (
+    lastRemoteRefresh?.tenantId === tenantId &&
+    Date.now() - lastRemoteRefresh.at < REMOTE_REFRESH_TTL_MS
+  ) {
+    return Promise.resolve();
+  }
+
+  const promise = (async () => {
+    do {
+      remoteRefreshRerunRequested = false;
+      await fetchRemoteMembers(tenantId);
+    } while (remoteRefreshRerunRequested);
+    lastRemoteRefresh = { tenantId, at: Date.now() };
+  })()
+    .catch(() => {})
+    .finally(() => {
+      if (inFlightRemoteRefresh?.promise === promise) inFlightRemoteRefresh = null;
+    });
+  inFlightRemoteRefresh = { tenantId, promise };
+  return promise;
+}
+
 export function useMemberProfiles() {
   const { tenantId, currentUser } = useAuth();
   const { isOnline } = useConnectivity();
@@ -75,23 +127,13 @@ export function useMemberProfiles() {
       void loadLocalProfiles(() => active);
     });
 
-    const refreshRemote = async () => {
+    const refreshRemote = () => {
       if (!isOnline) return;
-      const rows = await listMembers();
-      const members = rows.map((data): AppMember => ({
-        id: data.id,
-        tenantId: effectiveTenantId,
-        name: data.name,
-        role: data.role,
-        loginCode: data.login_code ?? null,
-        photoUrl: data.photo_url ?? null,
-        photoPath: data.photo_path ?? null,
-      }));
-      await AdminRepository.replaceMembers(effectiveTenantId, members);
+      void refreshRemoteMembers(effectiveTenantId);
     };
-    void refreshRemote();
+    refreshRemote();
     const scheduleRefresh = debounce(
-      () => void refreshRemote(),
+      refreshRemote,
       REALTIME_REFRESH_DELAY_MS,
     );
     const unsubRemote = realtimeClient.subscribe((event) => {

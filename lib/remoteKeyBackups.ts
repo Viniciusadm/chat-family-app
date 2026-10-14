@@ -6,7 +6,7 @@ export interface PasswordSettings {
   verifier: PasswordVerifierField;
 }
 
-export async function getPasswordSettings(_uid: string): Promise<PasswordSettings | null> {
+export async function getPasswordSettings(): Promise<PasswordSettings | null> {
   const settings = await cryptoApi.getPasswordSettings();
   if (
     !settings?.password_salt ||
@@ -25,7 +25,6 @@ export async function getPasswordSettings(_uid: string): Promise<PasswordSetting
 }
 
 export async function writePasswordSettings(
-  _uid: string,
   settings: PasswordSettings,
 ): Promise<void> {
   await cryptoApi.putPasswordSettings({
@@ -35,12 +34,11 @@ export async function writePasswordSettings(
   });
 }
 
-export async function clearPasswordSettings(_uid: string): Promise<void> {
+export async function clearPasswordSettings(): Promise<void> {
   await cryptoApi.deletePasswordSettings();
 }
 
 export async function writeKeyBackup(
-  _uid: string,
   chatId: string,
   payload: { ciphertext: string; iv: string },
 ): Promise<void> {
@@ -51,9 +49,7 @@ export async function writeKeyBackup(
   });
 }
 
-export async function listKeyBackups(
-  _uid: string,
-): Promise<{ chatId: string; backup: KeyBackupDoc }[]> {
+export async function listKeyBackups(): Promise<{ chatId: string; backup: KeyBackupDoc }[]> {
   const backups = await cryptoApi.listKeyBackups();
   return backups.map((backup) => ({
     chatId: backup.chat_id,
@@ -66,10 +62,10 @@ export async function listKeyBackups(
   }));
 }
 
-export async function countKeyBackups(uid: string): Promise<number> {
-  return (await listKeyBackups(uid)).length;
+export async function countKeyBackups(): Promise<number> {
+  return (await listKeyBackups()).length;
 }
 
-export async function deleteAllKeyBackups(_uid: string): Promise<void> {
+export async function deleteAllKeyBackups(): Promise<void> {
   await cryptoApi.deleteKeyBackups();
 }

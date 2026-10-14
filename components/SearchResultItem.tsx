@@ -1,7 +1,13 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { ThemeTokens } from "@/theme/tokens";
+import {
+  fontSizes,
+  fontWeights,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import { formatMessageTime } from "@/lib/formatMessageTime";
 import type { SearchResult, SearchSnippet } from "@/lib/searchMessages";
 
 interface SearchResultItemProps {
@@ -10,35 +16,6 @@ interface SearchResultItemProps {
   senderLabel: string | null;
   isMine: boolean;
   onPress: () => void;
-}
-
-function formatTime(date: Date) {
-  return date.toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function isSameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
-function formatTimestamp(ms: number): string {
-  const date = new Date(ms);
-  const now = new Date();
-  if (isSameDay(date, now)) return formatTime(date);
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (isSameDay(date, yesterday)) return "Ontem";
-  return date.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: date.getFullYear() === now.getFullYear() ? undefined : "2-digit",
-  });
 }
 
 function renderSnippet(
@@ -86,11 +63,11 @@ const buildStyles = (t: ThemeTokens) =>
   StyleSheet.create({
     row: {
       flexDirection: "row",
-      paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: t.border,
-      gap: 12,
+      gap: spacing.md,
     },
     rowPressed: {
       backgroundColor: t.muted,
@@ -114,32 +91,32 @@ const buildStyles = (t: ThemeTokens) =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      gap: 8,
+      gap: spacing.sm,
     },
     chatName: {
       flex: 1,
-      fontSize: 15,
-      fontWeight: "600",
+      fontSize: fontSizes.bodySmall,
+      fontWeight: fontWeights.semibold,
       color: t.foreground,
     },
     time: {
-      fontSize: 12,
+      fontSize: fontSizes.footnote,
       color: t.timestamp,
     },
     senderLine: {
-      marginTop: 2,
-      fontSize: 12,
+      marginTop: spacing.xxs,
+      fontSize: fontSizes.footnote,
       color: t.mutedForeground,
     },
     snippet: {
-      marginTop: 4,
-      fontSize: 14,
+      marginTop: spacing.xs,
+      fontSize: fontSizes.subhead,
       color: t.foreground,
     },
     snippetMatch: {
       backgroundColor: t.primaryTintStrong,
       color: t.foreground,
-      fontWeight: "700",
+      fontWeight: fontWeights.bold,
     },
   });
 
@@ -167,7 +144,7 @@ export function SearchResultItem({
             {chatName}
           </Text>
           <Text style={styles.time}>
-            {formatTimestamp(result.message.createdAtMs)}
+            {formatMessageTime(new Date(result.message.createdAtMs))}
           </Text>
         </View>
         {senderLabel ? (

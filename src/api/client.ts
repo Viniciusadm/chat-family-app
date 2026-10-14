@@ -1,7 +1,21 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 
 const ACCESS_TOKEN_KEY = "chat_back.access_token";
 const REFRESH_TOKEN_KEY = "chat_back.refresh_token";
+const TOKEN_STORE_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+};
+
+async function readStoredToken(key: string): Promise<string | null> {
+  const secure = await SecureStore.getItemAsync(key, TOKEN_STORE_OPTIONS);
+  if (secure) return secure;
+  const legacy = await AsyncStorage.getItem(key);
+  if (!legacy) return null;
+  await SecureStore.setItemAsync(key, legacy, TOKEN_STORE_OPTIONS);
+  await AsyncStorage.removeItem(key);
+  return legacy;
+}
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
@@ -24,52 +38,67 @@ declare const process: {
   env: {
     EXPO_PUBLIC_API_BASE_URL?: string;
     EXPO_PUBLIC_API_WS_URL?: string;
-    EXPO_PUBLIC_MEDIA_BASE_URL?: string;
   };
 };
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:3000";
 export const API_WS_URL = process.env.EXPO_PUBLIC_API_WS_URL ?? "ws://localhost:3000/realtime";
-export const MEDIA_BASE_URL = process.env.EXPO_PUBLIC_MEDIA_BASE_URL ?? "http://localhost:3000";
 
 type RefreshOutcome = "refreshed" | "rejected" | "unavailable";
 
 let accessToken: string | null = null;
 let refreshToken: string | null = null;
 let refreshPromise: Promise<RefreshOutcome> | null = null;
+let storedTokensLoad: Promise<unknown> | null = null;
+let tokenGeneration = 0;
 const logoutListeners = new Set<(reason: string | null) => void>();
 
-export async function loadStoredTokens() {
-  const [access, refresh] = await Promise.all([
-    AsyncStorage.getItem(ACCESS_TOKEN_KEY),
-    AsyncStorage.getItem(REFRESH_TOKEN_KEY),
-  ]);
-  accessToken = access;
-  refreshToken = refresh;
-  return { accessToken, refreshToken };
+function ensureStoredTokensLoaded() {
+  storedTokensLoad ??= loadStoredTokens();
+  return storedTokensLoad;
+}
+
+export function loadStoredTokens() {
+  const generation = ++tokenGeneration;
+  const load = Promise.all([
+    readStoredToken(ACCESS_TOKEN_KEY),
+    readStoredToken(REFRESH_TOKEN_KEY),
+  ]).then(([access, refresh]) => {
+    if (generation === tokenGeneration) {
+      accessToken = access;
+      refreshToken = refresh;
+    }
+    return { accessToken, refreshToken };
+  });
+  storedTokensLoad = load;
+  return load;
 }
 
 export function getAccessToken() {
   return accessToken;
 }
 
-export function getRefreshToken() {
-  return refreshToken;
-}
-
 export async function setTokens(tokens: { access_token: string; refresh_token: string }) {
+  tokenGeneration++;
+  storedTokensLoad = Promise.resolve();
   accessToken = tokens.access_token;
   refreshToken = tokens.refresh_token;
-  await AsyncStorage.multiSet([
-    [ACCESS_TOKEN_KEY, accessToken],
-    [REFRESH_TOKEN_KEY, refreshToken],
+  await Promise.all([
+    SecureStore.setItemAsync(ACCESS_TOKEN_KEY, tokens.access_token, TOKEN_STORE_OPTIONS),
+    SecureStore.setItemAsync(REFRESH_TOKEN_KEY, tokens.refresh_token, TOKEN_STORE_OPTIONS),
   ]);
 }
 
 export async function clearTokens() {
+  tokenGeneration++;
+  storedTokensLoad = Promise.resolve();
   accessToken = null;
   refreshToken = null;
-  await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);
+  await Promise.all([
+    SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY, TOKEN_STORE_OPTIONS),
+    SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY, TOKEN_STORE_OPTIONS),
+    AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]),
+  ]);
 }
 
 export function onApiLogout(listener: (reason: string | null) => void) {
@@ -135,8 +164,10 @@ export async function apiFetch<T = unknown>(
   const needsAuth = options.auth !== false;
   const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
 
-  if (needsAuth && accessToken) {
-    headers.set("Authorization", `Bearer ${accessToken}`);
+  if (needsAuth) await ensureStoredTokensLoaded();
+  const sentAccessToken = accessToken;
+  if (needsAuth && sentAccessToken) {
+    headers.set("Authorization", `Bearer ${sentAccessToken}`);
   }
   if (options.body !== undefined && !isForm && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -164,6 +195,9 @@ export async function apiFetch<T = unknown>(
   const data = await parseResponse(response);
 
   if (response.status === 401 && needsAuth && options.retry !== false) {
+    if (accessToken && accessToken !== sentAccessToken) {
+      return apiFetch<T>(path, { ...options, retry: false });
+    }
     const outcome = await refreshAccessToken();
     if (outcome === "refreshed") {
       return apiFetch<T>(path, { ...options, retry: false });
@@ -197,8 +231,4 @@ export function isRemoteUrl(uri: string | null | undefined): boolean {
 
 export async function refreshApiSession(): Promise<boolean> {
   return (await refreshAccessToken()) === "refreshed";
-}
-
-export async function healthCheck() {
-  return apiFetch<{ ok: boolean }>("/health", { auth: false });
 }

@@ -1,6 +1,7 @@
 import { isRemoteUrl, mediaAuthHeaders } from "@/src/api/client";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import { fontWeights, type ThemeTokens } from "@/theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useEffect, useState } from "react";
@@ -23,6 +24,20 @@ function initialsFromName(name?: string | null) {
     .toUpperCase();
 }
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    wrap: {
+      overflow: "hidden",
+      backgroundColor: t.primaryTint,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    initials: {
+      fontWeight: fontWeights.bold,
+      color: t.primary,
+    },
+  });
+
 export function ProfileAvatar({
   name,
   photoUrl,
@@ -30,20 +45,7 @@ export function ProfileAvatar({
   icon = "person-outline",
 }: ProfileAvatarProps) {
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      wrap: {
-        overflow: "hidden",
-        backgroundColor: t.primaryTint,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      initials: {
-        fontWeight: "700",
-        color: t.primary,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
   const [imageFailed, setImageFailed] = useState(false);
   const initials = initialsFromName(name);
   const radius = size / 2;

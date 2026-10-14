@@ -20,11 +20,14 @@ function rowToReaction(row: ReactionRow): Reaction {
   return { userId: row.user_id, emoji: row.emoji };
 }
 
+export type ReactionStatus = "loading" | "sent" | "removing";
+
 export type PendingReaction = {
   messageId: string;
   userId: string;
   emoji: string;
   chatId: string;
+  status: "loading" | "removing";
 };
 
 export const ReactionRepository = {
@@ -49,6 +52,7 @@ export const ReactionRepository = {
        FROM message_reactions mr
        INNER JOIN messages m ON m.id = mr.message_id
        WHERE m.conversation_id = ?
+         AND mr.status <> 'removing'
        ORDER BY mr.emoji`,
       [conversationId]
     );
@@ -87,18 +91,65 @@ export const ReactionRepository = {
     emit(conversationId);
   },
 
-  async getPendingReactions(): Promise<PendingReaction[]> {
-    const db = await getDatabase();
-    const rows = await db.getAllAsync<{ message_id: string; user_id: string; emoji: string; conversation_id: string }>(
-      `SELECT mr.message_id, mr.user_id, mr.emoji, m.conversation_id
-       FROM message_reactions mr
-       INNER JOIN messages m ON m.id = mr.message_id
-       WHERE mr.status = 'loading'`
-    );
-    return rows.map((r) => ({ messageId: r.message_id, userId: r.user_id, emoji: r.emoji, chatId: r.conversation_id }));
+  async markRemoving(messageId: string, userId: string, conversationId: string) {
+    await withExclusiveWrite(async (tx) => {
+      await tx.runAsync(
+        `UPDATE message_reactions SET status = 'removing' WHERE message_id = ? AND user_id = ?`,
+        [messageId, userId]
+      );
+    });
+    emit(conversationId);
   },
 
-  async updateStatus(messageId: string, userId: string, status: "loading" | "sent") {
+  async getPendingReactions(): Promise<PendingReaction[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<{ message_id: string; user_id: string; emoji: string; status: string; conversation_id: string }>(
+      `SELECT mr.message_id, mr.user_id, mr.emoji, mr.status, m.conversation_id
+       FROM message_reactions mr
+       INNER JOIN messages m ON m.id = mr.message_id
+       WHERE mr.status IN ('loading', 'removing')`
+    );
+    return rows.map((r) => ({
+      messageId: r.message_id,
+      userId: r.user_id,
+      emoji: r.emoji,
+      chatId: r.conversation_id,
+      status: r.status === "removing" ? "removing" : "loading",
+    }));
+  },
+
+  async confirmReactionSent(messageId: string, userId: string, emoji: string) {
+    await withExclusiveWrite(async (tx) => {
+      await tx.runAsync(
+        `UPDATE message_reactions SET status = 'sent'
+         WHERE message_id = ? AND user_id = ? AND emoji = ? AND status = 'loading'`,
+        [messageId, userId, emoji]
+      );
+    });
+  },
+
+  async deleteRemovedReaction(messageId: string, userId: string) {
+    await withExclusiveWrite(async (tx) => {
+      await tx.runAsync(
+        `DELETE FROM message_reactions
+         WHERE message_id = ? AND user_id = ? AND status = 'removing'`,
+        [messageId, userId]
+      );
+    });
+  },
+
+  async discardPendingReaction(messageId: string, userId: string, conversationId: string) {
+    await withExclusiveWrite(async (tx) => {
+      await tx.runAsync(
+        `DELETE FROM message_reactions
+         WHERE message_id = ? AND user_id = ? AND status IN ('loading', 'removing')`,
+        [messageId, userId]
+      );
+    });
+    emit(conversationId);
+  },
+
+  async updateStatus(messageId: string, userId: string, status: ReactionStatus) {
     await withExclusiveWrite(async (tx) => {
       await tx.runAsync(
         `UPDATE message_reactions SET status = ? WHERE message_id = ? AND user_id = ?`,
@@ -115,36 +166,53 @@ export const ReactionRepository = {
     remote: { messageId: string; userId: string; emoji: string }[]
   ) {
     await withExclusiveWrite(async (tx) => {
-      for (const reaction of remote) {
-        await tx.runAsync(
-          `INSERT INTO message_reactions (message_id, user_id, emoji, status)
-           VALUES (?, ?, ?, 'sent')
-           ON CONFLICT(message_id, user_id) DO UPDATE SET
-             emoji = excluded.emoji,
-             status = 'sent'`,
-          [reaction.messageId, reaction.userId, reaction.emoji]
-        );
+      const upsert = await tx.prepareAsync(
+        `INSERT INTO message_reactions (message_id, user_id, emoji, status)
+         VALUES (?, ?, ?, 'sent')
+         ON CONFLICT(message_id, user_id) DO UPDATE SET
+           emoji = excluded.emoji,
+           status = 'sent'
+         WHERE message_reactions.status = 'sent'`
+      );
+      try {
+        for (const reaction of remote) {
+          await upsert.executeAsync([
+            reaction.messageId,
+            reaction.userId,
+            reaction.emoji,
+          ]);
+        }
+      } finally {
+        await upsert.finalizeAsync();
       }
 
-      const keep = remote.map((reaction) => `${reaction.messageId}:${reaction.userId}`);
-      const placeholders = keep.length > 0 ? keep.map(() => "?").join(",") : "''";
-      await tx.runAsync(
-        `DELETE FROM message_reactions
-         WHERE status = 'sent'
-           AND message_id IN (SELECT id FROM messages WHERE conversation_id = ?)
-           AND (message_id || ':' || user_id) NOT IN (${placeholders})`,
-        [conversationId, ...keep]
+      const keep = new Set(
+        remote.map((reaction) => `${reaction.messageId}:${reaction.userId}`)
       );
+      const stored = await tx.getAllAsync<Pick<ReactionRow, "message_id" | "user_id">>(
+        `SELECT mr.message_id, mr.user_id
+         FROM message_reactions mr
+         INNER JOIN messages m ON m.id = mr.message_id
+         WHERE m.conversation_id = ?
+           AND mr.status = 'sent'`,
+        [conversationId]
+      );
+      const stale = stored.filter(
+        (row) => !keep.has(`${row.message_id}:${row.user_id}`)
+      );
+      if (stale.length === 0) return;
+      const remove = await tx.prepareAsync(
+        `DELETE FROM message_reactions
+         WHERE message_id = ? AND user_id = ? AND status = 'sent'`
+      );
+      try {
+        for (const row of stale) {
+          await remove.executeAsync([row.message_id, row.user_id]);
+        }
+      } finally {
+        await remove.finalizeAsync();
+      }
     });
     emit(conversationId);
-  },
-
-  async deleteReaction(messageId: string, userId: string) {
-    await withExclusiveWrite(async (tx) => {
-      await tx.runAsync(
-        `DELETE FROM message_reactions WHERE message_id = ? AND user_id = ?`,
-        [messageId, userId]
-      );
-    });
   },
 };

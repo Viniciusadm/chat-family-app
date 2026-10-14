@@ -37,11 +37,6 @@ interface UnlockedState {
 
 let unlocked: UnlockedState | null = null;
 
-export function getUnlockedKek(uid: string): Uint8Array | null {
-  if (!unlocked || unlocked.uid !== uid) return null;
-  return unlocked.kek;
-}
-
 export function isBackupUnlockedFor(uid: string): boolean {
   return unlocked != null && unlocked.uid === uid;
 }
@@ -51,13 +46,13 @@ export function lockBackup(): void {
   unlocked = null;
 }
 
-export async function hasPasswordConfigured(uid: string): Promise<boolean> {
-  const settings = await getPasswordSettings(uid);
+export async function hasPasswordConfigured(): Promise<boolean> {
+  const settings = await getPasswordSettings();
   return settings != null;
 }
 
-export async function hasRemoteBackups(uid: string): Promise<boolean> {
-  return (await countKeyBackups(uid)) > 0;
+export async function hasRemoteBackups(): Promise<boolean> {
+  return (await countKeyBackups()) > 0;
 }
 
 export async function setupBackupPassword(
@@ -65,7 +60,7 @@ export async function setupBackupPassword(
   password: string,
   onProgress?: CryptoProgressCallback,
 ): Promise<void> {
-  if (await getPasswordSettings(uid)) {
+  if (await getPasswordSettings()) {
     throw new Error("Password already configured. Use changeBackupPassword.");
   }
   const salt = generatePasswordSalt();
@@ -78,7 +73,7 @@ export async function setupBackupPassword(
   // whereas settings without backups look configured but protect nothing.
   try {
     await backupAllLocalKeys(uid, onProgress);
-    await writePasswordSettings(uid, { salt, verifier });
+    await writePasswordSettings({ salt, verifier });
   } catch (error) {
     lockBackup();
     throw error;
@@ -90,7 +85,7 @@ export async function unlockBackupWithPassword(
   password: string,
   onProgress?: CryptoProgressCallback,
 ): Promise<{ ok: true } | { ok: false; reason: "no-settings" | "wrong-password" }> {
-  const settings = await getPasswordSettings(uid);
+  const settings = await getPasswordSettings();
   if (!settings) return { ok: false, reason: "no-settings" };
   const kek = await deriveKeyFromPassword(password, settings.salt, (percent) =>
     onProgress?.({ phase: "deriving", percent }),
@@ -109,7 +104,7 @@ export async function changeBackupPassword(
   newPassword: string,
   onProgress?: CryptoProgressCallback,
 ): Promise<{ ok: true } | { ok: false; reason: "no-settings" | "wrong-password" }> {
-  const settings = await getPasswordSettings(uid);
+  const settings = await getPasswordSettings();
   if (!settings) return { ok: false, reason: "no-settings" };
   const oldKek = await deriveKeyFromPassword(oldPassword, settings.salt, (percent) =>
     onProgress?.({ phase: "deriving", percent: percent / 2 }),
@@ -128,26 +123,35 @@ export async function changeBackupPassword(
   // settings. Deleting first (or writing the verifier first) would leave keys that
   // only exist on the server permanently unrecoverable if anything failed here.
   try {
-    await rewrapRemoteBackups(uid, oldKek, newKek, onProgress);
+    await rewrapRemoteBackups(oldKek, newKek, onProgress, async () => {
+      try {
+        await writePasswordSettings({ salt: newSalt, verifier: newVerifier });
+      } catch (error) {
+        const published = await getPasswordSettings().catch(() => null);
+        if (published?.salt !== newSalt) throw error;
+      }
+    });
   } finally {
     oldKek.fill(0);
   }
 
-  await writePasswordSettings(uid, { salt: newSalt, verifier: newVerifier });
   unlocked = { uid, kek: newKek };
   await backupAllLocalKeys(uid, onProgress);
   return { ok: true };
 }
 
 async function rewrapRemoteBackups(
-  uid: string,
   oldKek: Uint8Array,
   newKek: Uint8Array,
-  onProgress?: CryptoProgressCallback,
+  onProgress: CryptoProgressCallback | undefined,
+  publishNewSettings: () => Promise<void>,
 ): Promise<void> {
-  const backups = await listKeyBackups(uid);
+  const backups = await listKeyBackups();
   const total = backups.length;
-  if (total === 0) return;
+  if (total === 0) {
+    await publishNewSettings();
+    return;
+  }
   let done = 0;
   onProgress?.({ phase: "backing-up", done: 0, total });
 
@@ -165,7 +169,6 @@ async function rewrapRemoteBackups(
       );
       // putKeyBackup upserts per chat, so this overwrites the old wrapping in place.
       await writeKeyBackup(
-        uid,
         chatId,
         encryptConversationKeyWithKek(newKek, conversationKey),
       );
@@ -173,10 +176,10 @@ async function rewrapRemoteBackups(
       done++;
       onProgress?.({ phase: "backing-up", done, total });
     }
+    await publishNewSettings();
   } catch (error) {
     for (const { chatId, conversationKey } of converted) {
       await writeKeyBackup(
-        uid,
         chatId,
         encryptConversationKeyWithKek(oldKek, conversationKey),
       ).catch(() => {});
@@ -187,9 +190,9 @@ async function rewrapRemoteBackups(
   }
 }
 
-export async function disableBackupPassword(uid: string): Promise<void> {
-  await deleteAllKeyBackups(uid);
-  await clearPasswordSettings(uid);
+export async function disableBackupPassword(): Promise<void> {
+  await deleteAllKeyBackups();
+  await clearPasswordSettings();
   lockBackup();
 }
 
@@ -198,7 +201,7 @@ export async function restoreBackups(
   password: string,
   onProgress?: CryptoProgressCallback,
 ): Promise<RestoreResult> {
-  const settings = await getPasswordSettings(uid);
+  const settings = await getPasswordSettings();
   if (!settings) return { ok: false, reason: "no-settings" };
   const kek = await deriveKeyFromPassword(password, settings.salt, (percent) =>
     onProgress?.({ phase: "deriving", percent }),
@@ -207,7 +210,7 @@ export async function restoreBackups(
     kek.fill(0);
     return { ok: false, reason: "wrong-password" };
   }
-  const backups = await listKeyBackups(uid);
+  const backups = await listKeyBackups();
   if (backups.length === 0) {
     unlocked = { uid, kek };
     return { ok: false, reason: "no-backups" };
@@ -246,7 +249,7 @@ export async function tryBackupConversationKey(
   if (!unlocked || unlocked.uid !== uid) return;
   try {
     const wrapped = encryptConversationKeyWithKek(unlocked.kek, conversationKey);
-    await writeKeyBackup(uid, chatId, wrapped);
+    await writeKeyBackup(chatId, wrapped);
   } catch {
     // Network / permission issue — backup is opportunistic, never fail upstream.
   }
@@ -289,7 +292,7 @@ async function backupAllLocalKeys(
             const key = await SecureKeyStore.getConversationKey(chatId);
             if (key) {
               const wrapped = encryptConversationKeyWithKek(kek, key);
-              await writeKeyBackup(uid, chatId, wrapped);
+              await writeKeyBackup(chatId, wrapped);
             }
           } catch {
             // Skip; user can re-trigger by toggling the password later.

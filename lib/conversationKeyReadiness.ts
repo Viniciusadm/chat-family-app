@@ -8,6 +8,30 @@ import {
   importPendingKeyShareForChat,
 } from "@/lib/keyDistribution";
 import { MessageRepository } from "@/lib/MessageRepository";
+import { invalidateKeySharesCache } from "@/lib/remoteKeyShares";
+import { claimChatKey } from "@/src/api/crypto";
+
+const chatKeyLocks = new Map<string, Promise<unknown>>();
+
+function withChatKeyLock<T>(chatId: string, task: () => Promise<T>): Promise<T> {
+  const previous = chatKeyLocks.get(chatId) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(task);
+  chatKeyLocks.set(chatId, next);
+  void next.catch(() => {}).finally(() => {
+    if (chatKeyLocks.get(chatId) === next) chatKeyLocks.delete(chatId);
+  });
+  return next;
+}
+
+async function adoptKeyFromAnotherDevice(
+  chatId: string,
+  deviceId: string | undefined,
+): Promise<Uint8Array | null> {
+  if (!deviceId) return null;
+  invalidateKeySharesCache();
+  await importPendingKeyShareForChat(deviceId, chatId);
+  return getConversationKey(chatId);
+}
 
 export async function repairConversationKeyFromPendingShare(
   chatId: string,
@@ -49,16 +73,22 @@ export async function repairConversationKeyFromPendingShare(
   return false;
 }
 
-export async function prepareConversationKeyForEncryption(
+export function prepareConversationKeyForEncryption(
   chatId: string,
   deviceId?: string,
   options: { canCreate?: boolean } = {},
 ): Promise<Uint8Array | null> {
-  await repairConversationKeyFromPendingShare(chatId, deviceId);
-  const existingKey = await getConversationKey(chatId);
-  if (existingKey) return existingKey;
+  return withChatKeyLock(chatId, async () => {
+    await repairConversationKeyFromPendingShare(chatId, deviceId);
+    const existingKey = await getConversationKey(chatId);
+    if (existingKey) return existingKey;
 
-  if (options.canCreate === false) return null;
+    if (options.canCreate === false) return null;
 
-  return ensureConversationKey(chatId);
+    const claim = await claimChatKey(chatId).catch(() => null);
+    if (!claim) return null;
+    if (!claim.granted) return adoptKeyFromAnotherDevice(chatId, deviceId);
+
+    return ensureConversationKey(chatId);
+  });
 }

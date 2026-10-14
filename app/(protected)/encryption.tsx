@@ -1,10 +1,19 @@
 import { AppHeader } from "@/components/AppHeader";
 import { ScreenContainer } from "@/components/ScreenContainer";
+import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { validatePasswordStrength } from "@/lib/crypto/passwordKey";
 import type { CryptoProgress } from "@/lib/keyBackup";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import {
+  fontSizes,
+  fontWeights,
+  lineHeights,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -19,6 +28,9 @@ import {
 } from "react-native";
 
 type Mode = "idle" | "setup" | "change" | "unlock";
+
+const CRYPTO_FAILURE_MESSAGE =
+  "Não foi possível concluir. Verifique sua conexão e tente novamente.";
 
 const PASSWORD_RULES_HINT =
   "Mínimo 8 caracteres com letra maiúscula, minúscula, número e caractere especial.";
@@ -55,6 +67,139 @@ function progressPercent(p: CryptoProgress): number {
   }
 }
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: t.background,
+    },
+    content: {
+      flex: 1,
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.lg,
+    },
+    center: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    statusBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radius.md,
+      backgroundColor: t.muted,
+      marginBottom: spacing.lg,
+    },
+    statusText: {
+      color: t.foreground,
+      fontSize: fontSizes.bodySmall,
+      fontWeight: fontWeights.semibold,
+    },
+    sub: {
+      color: t.mutedForeground,
+      fontSize: fontSizes.subhead,
+      lineHeight: lineHeights.bodySmall,
+      marginBottom: spacing.xxl,
+    },
+    actions: {
+      gap: spacing.md,
+    },
+    form: {
+      gap: spacing.md,
+    },
+    input: {
+      minHeight: 48,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: t.inputBorder,
+      paddingHorizontal: spacing.lg,
+      fontSize: fontSizes.body,
+      color: t.foreground,
+      backgroundColor: t.background,
+    },
+    primaryBtn: {
+      minHeight: 48,
+      borderRadius: radius.md,
+      backgroundColor: t.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    primaryBtnText: {
+      color: t.primaryForeground,
+      fontSize: fontSizes.body,
+      fontWeight: fontWeights.bold,
+    },
+    secondaryBtn: {
+      minHeight: 48,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: t.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    secondaryBtnText: {
+      color: t.foreground,
+      fontSize: fontSizes.body,
+      fontWeight: fontWeights.semibold,
+    },
+    dangerBtn: {
+      minHeight: 48,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: t.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    dangerBtnText: {
+      color: t.destructive,
+      fontSize: fontSizes.body,
+      fontWeight: fontWeights.bold,
+    },
+    cancelBtn: {
+      paddingVertical: spacing.md,
+      alignItems: "center",
+    },
+    cancelText: {
+      color: t.mutedForeground,
+      fontSize: fontSizes.subhead,
+    },
+    error: {
+      color: t.destructive,
+      fontSize: fontSizes.subhead,
+    },
+    hint: {
+      color: t.mutedForeground,
+      fontSize: fontSizes.footnote,
+      lineHeight: lineHeights.footnote,
+    },
+    pressed: {
+      opacity: 0.72,
+    },
+    progressTrack: {
+      height: 8,
+      borderRadius: radius.pill,
+      backgroundColor: t.muted,
+      overflow: "hidden",
+      marginTop: spacing.xxl,
+      width: "80%",
+      alignSelf: "center",
+    },
+    progressFill: {
+      height: "100%",
+      backgroundColor: t.primary,
+      borderRadius: radius.xs,
+    },
+    progressLabel: {
+      color: t.mutedForeground,
+      fontSize: fontSizes.subhead,
+      textAlign: "center",
+      marginTop: spacing.sm,
+    },
+  });
+
 export default function EncryptionSettingsScreen() {
   const router = useRouter();
   const {
@@ -70,139 +215,8 @@ export default function EncryptionSettingsScreen() {
     lockBackupPassword,
   } = useAuth();
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      screen: {
-        flex: 1,
-        backgroundColor: t.background,
-      },
-      content: {
-        flex: 1,
-        paddingHorizontal: 20,
-        paddingTop: 16,
-      },
-      center: {
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      statusBox: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-        paddingVertical: 12,
-        paddingHorizontal: 14,
-        borderRadius: 12,
-        backgroundColor: t.muted,
-        marginBottom: 16,
-      },
-      statusText: {
-        color: t.foreground,
-        fontSize: 15,
-        fontWeight: "600",
-      },
-      sub: {
-        color: t.mutedForeground,
-        fontSize: 14,
-        lineHeight: 20,
-        marginBottom: 24,
-      },
-      actions: {
-        gap: 12,
-      },
-      form: {
-        gap: 12,
-      },
-      input: {
-        minHeight: 48,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: t.inputBorder,
-        paddingHorizontal: 14,
-        fontSize: 16,
-        color: t.foreground,
-        backgroundColor: t.background,
-      },
-      primaryBtn: {
-        minHeight: 48,
-        borderRadius: 12,
-        backgroundColor: t.primary,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      primaryBtnText: {
-        color: t.primaryForeground,
-        fontSize: 16,
-        fontWeight: "700",
-      },
-      secondaryBtn: {
-        minHeight: 48,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: t.border,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      secondaryBtnText: {
-        color: t.foreground,
-        fontSize: 16,
-        fontWeight: "600",
-      },
-      dangerBtn: {
-        minHeight: 48,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: t.border,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      dangerBtnText: {
-        color: t.destructive,
-        fontSize: 16,
-        fontWeight: "700",
-      },
-      cancelBtn: {
-        paddingVertical: 10,
-        alignItems: "center",
-      },
-      cancelText: {
-        color: t.mutedForeground,
-        fontSize: 14,
-      },
-      error: {
-        color: t.destructive,
-        fontSize: 13,
-      },
-      hint: {
-        color: t.mutedForeground,
-        fontSize: 12,
-        lineHeight: 16,
-      },
-      pressed: {
-        opacity: 0.72,
-      },
-      progressTrack: {
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: t.muted,
-        overflow: "hidden",
-        marginTop: 24,
-        width: "80%",
-        alignSelf: "center",
-      },
-      progressFill: {
-        height: "100%",
-        backgroundColor: t.primary,
-        borderRadius: 4,
-      },
-      progressLabel: {
-        color: t.mutedForeground,
-        fontSize: 13,
-        textAlign: "center",
-        marginTop: 8,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
+  const { showToast } = useToast();
   const [mode, setMode] = useState<Mode>("idle");
   const [oldPassword, setOldPassword] = useState("");
   const [password, setPassword] = useState("");
@@ -242,7 +256,14 @@ export default function EncryptionSettingsScreen() {
     const pwd = password;
     reset();
     setMode("idle");
-    setupBackupPassword(pwd);
+    void (async () => {
+      try {
+        await setupBackupPassword(pwd);
+        showToast("Senha criada");
+      } catch {
+        Alert.alert("Erro", CRYPTO_FAILURE_MESSAGE);
+      }
+    })();
   };
 
   const submitChange = () => {
@@ -260,7 +281,21 @@ export default function EncryptionSettingsScreen() {
     const newPwd = password;
     reset();
     setMode("idle");
-    changeBackupPassword(oldPwd, newPwd);
+    void (async () => {
+      try {
+        const result = await changeBackupPassword(oldPwd, newPwd);
+        if (result.ok) {
+          showToast("Senha alterada");
+        } else if (result.reason === "wrong-password") {
+          setMode("change");
+          setError("Senha atual incorreta.");
+        } else {
+          Alert.alert("Erro", "Sem senha configurada.");
+        }
+      } catch {
+        Alert.alert("Erro", CRYPTO_FAILURE_MESSAGE);
+      }
+    })();
   };
 
   const submitUnlock = async () => {
@@ -277,6 +312,8 @@ export default function EncryptionSettingsScreen() {
       } else {
         setError("Sem senha configurada.");
       }
+    } catch {
+      setError(CRYPTO_FAILURE_MESSAGE);
     } finally {
       setBusy(false);
     }
@@ -338,10 +375,10 @@ export default function EncryptionSettingsScreen() {
         {cryptoInProgress ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={theme.primary} />
-            <Text style={[styles.statusText, { marginTop: 20, textAlign: "center" }]}>
+            <Text style={[styles.statusText, { marginTop: spacing.xl, textAlign: "center" }]}>
               {progressTitle(cryptoProgress)}
             </Text>
-            <Text style={[styles.sub, { textAlign: "center", marginTop: 8, marginBottom: 0 }]}>
+            <Text style={[styles.sub, { textAlign: "center", marginTop: spacing.sm, marginBottom: 0 }]}>
               Você pode sair desta tela, mas não feche o app.
             </Text>
             {cryptoProgress ? (
@@ -372,6 +409,7 @@ export default function EncryptionSettingsScreen() {
           <View style={styles.actions}>
             {!hasBackupPassword ? (
               <Pressable
+                accessibilityRole="button"
                 onPress={() => {
                   reset();
                   setMode("setup");
@@ -384,6 +422,7 @@ export default function EncryptionSettingsScreen() {
               <>
                 {!backupUnlocked ? (
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => {
                       reset();
                       setMode("unlock");
@@ -394,6 +433,7 @@ export default function EncryptionSettingsScreen() {
                   </Pressable>
                 ) : (
                   <Pressable
+                    accessibilityRole="button"
                     onPress={lockBackupPassword}
                     style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
                   >
@@ -401,6 +441,7 @@ export default function EncryptionSettingsScreen() {
                   </Pressable>
                 )}
                 <Pressable
+                  accessibilityRole="button"
                   onPress={() => {
                     reset();
                     setMode("change");
@@ -410,6 +451,7 @@ export default function EncryptionSettingsScreen() {
                   <Text style={styles.secondaryBtnText}>Alterar senha</Text>
                 </Pressable>
                 <Pressable
+                  accessibilityRole="button"
                   onPress={confirmDisable}
                   disabled={busy}
                   style={({ pressed }) => [styles.dangerBtn, pressed && styles.pressed]}
@@ -463,6 +505,7 @@ export default function EncryptionSettingsScreen() {
             ) : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable
+              accessibilityRole="button"
               onPress={() => {
                 if (mode === "setup") submitSetup();
                 else if (mode === "change") submitChange();
@@ -483,6 +526,7 @@ export default function EncryptionSettingsScreen() {
               )}
             </Pressable>
             <Pressable
+              accessibilityRole="button"
               onPress={() => {
                 reset();
                 setMode("idle");

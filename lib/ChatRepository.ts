@@ -1,4 +1,5 @@
 import { getDatabase, withExclusiveWrite } from "@/lib/db";
+import type { SQLiteDatabase } from "expo-sqlite";
 import { timestampFromMillis } from "@/lib/localTimestamp";
 import { SecureKeyStore } from "@/lib/secureKeyStore";
 import type { Chat } from "@/types/chat";
@@ -96,6 +97,80 @@ function rowToChat(row: ChatRow): Chat {
   return chat;
 }
 
+const UPSERT_CHAT_SQL = `INSERT INTO chats (
+    id,
+    tenant_id,
+    participants,
+    is_group,
+    name,
+    photo_url,
+    photo_path,
+    unread_count,
+    last_message_text,
+    last_message_type,
+    last_message_at,
+    read_up_to,
+    updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET
+    tenant_id = excluded.tenant_id,
+    participants = excluded.participants,
+    is_group = excluded.is_group,
+    name = excluded.name,
+    photo_url = excluded.photo_url,
+    photo_path = excluded.photo_path,
+    unread_count = excluded.unread_count,
+    last_message_text = CASE
+      WHEN excluded.last_message_at IS NULL THEN chats.last_message_text
+      WHEN chats.last_message_at IS NULL THEN excluded.last_message_text
+      WHEN excluded.last_message_at > chats.last_message_at THEN excluded.last_message_text
+      ELSE chats.last_message_text
+    END,
+    last_message_type = CASE
+      WHEN excluded.last_message_at IS NULL THEN chats.last_message_type
+      WHEN chats.last_message_at IS NULL THEN excluded.last_message_type
+      WHEN excluded.last_message_at > chats.last_message_at THEN excluded.last_message_type
+      ELSE chats.last_message_type
+    END,
+    last_message_at = CASE
+      WHEN excluded.last_message_at IS NULL THEN chats.last_message_at
+      WHEN chats.last_message_at IS NULL THEN excluded.last_message_at
+      WHEN excluded.last_message_at > chats.last_message_at THEN excluded.last_message_at
+      ELSE chats.last_message_at
+    END,
+    read_up_to = excluded.read_up_to,
+    updated_at = excluded.updated_at`;
+
+function chatParams(chat: Chat) {
+  return [
+    chat.id,
+    chat.tenantId,
+    JSON.stringify(chat.participants),
+    chat.isGroup ? 1 : 0,
+    chat.name,
+    chat.photoUrl ?? null,
+    chat.photoPath ?? null,
+    chat.unreadCount,
+    chat.lastMessage?.text ?? null,
+    chat.lastMessage?.type ?? null,
+    chat.lastMessage?.timestamp?.toISOString() ?? null,
+    serializeReadUpTo(chat.readUpTo),
+    new Date().toISOString(),
+  ];
+}
+
+async function deleteChatRows(tx: SQLiteDatabase, chatId: string) {
+  await tx.runAsync("DELETE FROM chats WHERE id = ?", [chatId]);
+  await tx.runAsync(
+    `DELETE FROM message_reactions
+     WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = ?)`,
+    [chatId]
+  );
+  await tx.runAsync("DELETE FROM messages WHERE conversation_id = ?", [chatId]);
+  await tx.runAsync("DELETE FROM chat_message_sync WHERE chat_id = ?", [chatId]);
+  await tx.runAsync("DELETE FROM key_share_recipients WHERE chat_id = ?", [chatId]);
+}
+
 export const ChatRepository = {
   subscribe(listener: Listener) {
     listeners.add(listener);
@@ -131,66 +206,25 @@ export const ChatRepository = {
 
   async upsertChat(chat: Chat, options: { notify?: boolean } = {}) {
     await withExclusiveWrite(async (tx) => {
-      await tx.runAsync(
-        `INSERT INTO chats (
-          id,
-          tenant_id,
-          participants,
-          is_group,
-          name,
-          photo_url,
-          photo_path,
-          unread_count,
-          last_message_text,
-          last_message_type,
-          last_message_at,
-          read_up_to,
-          updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          tenant_id = excluded.tenant_id,
-          participants = excluded.participants,
-          is_group = excluded.is_group,
-          name = excluded.name,
-          photo_url = excluded.photo_url,
-          photo_path = excluded.photo_path,
-          unread_count = excluded.unread_count,
-          last_message_text = CASE
-            WHEN excluded.last_message_at IS NULL THEN chats.last_message_text
-            WHEN chats.last_message_at IS NULL THEN excluded.last_message_text
-            WHEN excluded.last_message_at > chats.last_message_at THEN excluded.last_message_text
-            ELSE chats.last_message_text
-          END,
-          last_message_type = CASE
-            WHEN excluded.last_message_at IS NULL THEN chats.last_message_type
-            WHEN chats.last_message_at IS NULL THEN excluded.last_message_type
-            WHEN excluded.last_message_at > chats.last_message_at THEN excluded.last_message_type
-            ELSE chats.last_message_type
-          END,
-          last_message_at = CASE
-            WHEN excluded.last_message_at IS NULL THEN chats.last_message_at
-            WHEN chats.last_message_at IS NULL THEN excluded.last_message_at
-            WHEN excluded.last_message_at > chats.last_message_at THEN excluded.last_message_at
-            ELSE chats.last_message_at
-          END,
-          read_up_to = excluded.read_up_to,
-          updated_at = excluded.updated_at`,
-        [
-          chat.id,
-          chat.tenantId,
-          JSON.stringify(chat.participants),
-          chat.isGroup ? 1 : 0,
-          chat.name,
-          chat.photoUrl ?? null,
-          chat.photoPath ?? null,
-          chat.unreadCount,
-          chat.lastMessage?.text ?? null,
-          chat.lastMessage?.type ?? null,
-          chat.lastMessage?.timestamp?.toISOString() ?? null,
-          serializeReadUpTo(chat.readUpTo),
-          new Date().toISOString(),
-        ]
-      );
+      await tx.runAsync(UPSERT_CHAT_SQL, chatParams(chat));
+    });
+
+    if (options.notify !== false) {
+      emit();
+    }
+  },
+
+  async upsertChats(chats: Chat[], options: { notify?: boolean } = {}) {
+    if (chats.length === 0) return;
+    await withExclusiveWrite(async (tx) => {
+      const statement = await tx.prepareAsync(UPSERT_CHAT_SQL);
+      try {
+        for (const chat of chats) {
+          await statement.executeAsync(chatParams(chat));
+        }
+      } finally {
+        await statement.finalizeAsync();
+      }
     });
 
     if (options.notify !== false) {
@@ -206,20 +240,32 @@ export const ChatRepository = {
     chats: Chat[],
     options: { notify?: boolean } = {}
   ) {
-    for (const chat of chats) {
-      await this.upsertChat(chat, { notify: false });
-    }
+    const keepIds = new Set(chats.map((chat) => chat.id));
+    const removedIds: string[] = [];
     await withExclusiveWrite(async (tx) => {
-      if (chats.length === 0) {
-        await tx.runAsync("DELETE FROM chats WHERE tenant_id = ?", [tenantId]);
-        return;
+      const statement = await tx.prepareAsync(UPSERT_CHAT_SQL);
+      try {
+        for (const chat of chats) {
+          await statement.executeAsync(chatParams(chat));
+        }
+      } finally {
+        await statement.finalizeAsync();
       }
-      const placeholders = chats.map(() => "?").join(",");
-      await tx.runAsync(
-        `DELETE FROM chats WHERE tenant_id = ? AND id NOT IN (${placeholders})`,
-        [tenantId, ...chats.map((chat) => chat.id)]
+      const existing = await tx.getAllAsync<{ id: string }>(
+        "SELECT id FROM chats WHERE tenant_id = ?",
+        [tenantId]
       );
+      for (const row of existing) {
+        if (keepIds.has(row.id)) continue;
+        await deleteChatRows(tx, row.id);
+        removedIds.push(row.id);
+      }
     });
+    await Promise.all(
+      removedIds.map((chatId) =>
+        SecureKeyStore.removeConversationKey(chatId).catch(() => {})
+      )
+    );
 
     if (options.notify !== false) {
       emit();
@@ -231,14 +277,7 @@ export const ChatRepository = {
     // chat has to be cleared here — otherwise the decrypted message bodies of a deleted
     // conversation stay on the device forever.
     await withExclusiveWrite(async (tx) => {
-      await tx.runAsync("DELETE FROM chats WHERE id = ?", [chatId]);
-      await tx.runAsync(
-        `DELETE FROM message_reactions
-         WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = ?)`,
-        [chatId]
-      );
-      await tx.runAsync("DELETE FROM messages WHERE conversation_id = ?", [chatId]);
-      await tx.runAsync("DELETE FROM chat_message_sync WHERE chat_id = ?", [chatId]);
+      await deleteChatRows(tx, chatId);
     });
     await SecureKeyStore.removeConversationKey(chatId).catch(() => {});
     if (options.notify !== false) {

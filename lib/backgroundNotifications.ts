@@ -103,6 +103,10 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
       await scheduleNotification(senderName, "Áudio", chatId, messageId);
       return;
     }
+    if (payloadType === "image") {
+      await scheduleNotification(senderName, "Imagem", chatId, messageId);
+      return;
+    }
 
     let plaintext: string | null = null;
 

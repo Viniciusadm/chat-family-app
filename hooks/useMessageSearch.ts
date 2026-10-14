@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/context/AuthContext";
 import { MessageRepository } from "@/lib/MessageRepository";
+import { debounce } from "@/lib/debounce";
 import {
+  normalize,
   searchMessages,
   type SearchResult,
   type SearchableMessage,
@@ -17,9 +19,11 @@ interface IndexState {
 const MIN_QUERY_LENGTH = 2;
 const DEBOUNCE_MS = 200;
 const RESULT_LIMIT = 50;
+const INDEX_RELOAD_DELAY_MS = 1_000;
 
 export function useMessageSearch() {
-  const { tenantId } = useAuth();
+  const { tenantId, currentUser } = useAuth();
+  const memberId = currentUser?.id ?? null;
   const [state, setState] = useState<IndexState>({
     index: [],
     loading: true,
@@ -40,7 +44,7 @@ export function useMessageSearch() {
   }, [rawQuery]);
 
   useEffect(() => {
-    if (!tenantId) {
+    if (!tenantId || !memberId) {
       setState({ index: [], loading: false, error: null });
       return;
     }
@@ -48,9 +52,13 @@ export function useMessageSearch() {
     let cancelled = false;
     const load = async () => {
       try {
-        const data = await MessageRepository.getAllTextMessages(tenantId);
+        const data = await MessageRepository.getAllTextMessages(tenantId, memberId);
         if (cancelled) return;
-        setState({ index: data, loading: false, error: null });
+        const index = data.map((message) => ({
+          ...message,
+          normalizedContent: normalize(message.content),
+        }));
+        setState({ index, loading: false, error: null });
       } catch (err) {
         if (cancelled) return;
         setState({
@@ -61,16 +69,16 @@ export function useMessageSearch() {
       }
     };
 
-    load();
-    const unsubscribe = MessageRepository.subscribeAll(() => {
-      load();
-    });
+    void load();
+    const scheduleLoad = debounce(() => void load(), INDEX_RELOAD_DELAY_MS);
+    const unsubscribe = MessageRepository.subscribeAll(scheduleLoad);
 
     return () => {
       cancelled = true;
+      scheduleLoad.cancel();
       unsubscribe();
     };
-  }, [tenantId]);
+  }, [memberId, tenantId]);
 
   const trimmedQuery = debouncedQuery.trim();
   const isSearching = trimmedQuery.length >= MIN_QUERY_LENGTH;

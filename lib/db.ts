@@ -14,10 +14,8 @@ async function ensureColumn(
   await db.execAsync(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition};`);
 }
 
-async function migrate(db: SQLite.SQLiteDatabase) {
+async function migrateToVersion1(db: SQLite.SQLiteDatabase) {
   await db.execAsync(`
-    PRAGMA journal_mode = WAL;
-
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       conversation_id TEXT,
@@ -119,6 +117,12 @@ async function migrate(db: SQLite.SQLiteDatabase) {
       ON message_reactions (message_id);
   `);
 
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS conversation_keys (
+      chat_id TEXT PRIMARY KEY
+    );
+  `);
+
   await ensureColumn(db, "messages", "local_audio_uri", "TEXT");
   await ensureColumn(db, "messages", "audio_downloaded_at", "TEXT");
   await ensureColumn(db, "messages", "audio_duration", "REAL");
@@ -161,6 +165,44 @@ async function migrate(db: SQLite.SQLiteDatabase) {
     CREATE INDEX IF NOT EXISTS idx_messages_pending_op
       ON messages (pending_op);
   `);
+}
+
+async function migrateToVersion2(db: SQLite.SQLiteDatabase) {
+  await db.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_messages_status_type_created_at
+      ON messages (status, type, created_at);
+
+    DROP INDEX IF EXISTS idx_messages_status;
+
+    CREATE INDEX IF NOT EXISTS idx_reactions_status
+      ON message_reactions (status);
+
+    CREATE INDEX IF NOT EXISTS idx_chats_tenant
+      ON chats (tenant_id);
+
+    CREATE TABLE IF NOT EXISTS key_share_recipients (
+      chat_id TEXT PRIMARY KEY,
+      key_fingerprint TEXT NOT NULL,
+      device_ids TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+}
+
+const MIGRATIONS: ((db: SQLite.SQLiteDatabase) => Promise<void>)[] = [
+  migrateToVersion1,
+  migrateToVersion2,
+];
+
+async function migrate(db: SQLite.SQLiteDatabase) {
+  await db.execAsync("PRAGMA journal_mode = WAL;");
+  const row = await db.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
+  let version = row?.user_version ?? 0;
+  while (version < MIGRATIONS.length) {
+    await MIGRATIONS[version](db);
+    version += 1;
+    await db.execAsync(`PRAGMA user_version = ${version};`);
+  }
 }
 
 export async function getDatabase() {

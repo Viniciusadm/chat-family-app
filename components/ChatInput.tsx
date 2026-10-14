@@ -1,14 +1,17 @@
 import { useSendMessage } from "@/hooks/useSendMessage";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import { lightImpact } from "@/lib/haptics";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import {
+  fontSizes,
+  fontWeights,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import type { Message, MessageReplySnapshot } from "@/types/chat";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioRecorder,
-} from "expo-audio";
 import * as ImagePicker from "expo-image-picker";
 import {
   forwardRef,
@@ -50,6 +53,93 @@ export interface ChatInputHandle {
   focus: () => void;
 }
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    bar: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: t.border,
+      backgroundColor: t.chatInputBg,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    inputShell: {
+      flex: 1,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: t.inputBorder,
+      backgroundColor: t.background,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      minHeight: 44,
+      justifyContent: "center",
+    },
+    input: {
+      fontSize: fontSizes.bodySmall,
+      color: t.foreground,
+      padding: 0,
+    },
+    roundBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      backgroundColor: t.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    attachBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: radius.pill,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    recordingOverlay: {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      bottom: 0,
+      right: 52,
+      borderRadius: radius.md,
+      backgroundColor: t.muted,
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacing.lg,
+      gap: spacing.sm,
+      pointerEvents: "none",
+    },
+    recDot: {
+      width: 10,
+      height: 10,
+      borderRadius: radius.pill,
+      backgroundColor: t.recording,
+    },
+    recText: {
+      flex: 1,
+      fontSize: fontSizes.subhead,
+      fontWeight: fontWeights.semibold,
+      color: t.recording,
+    },
+    recTimer: {
+      fontSize: fontSizes.subhead,
+      fontWeight: fontWeights.bold,
+      color: t.foreground,
+      minWidth: 38,
+      textAlign: "right",
+    },
+    pressed: {
+      opacity: 0.85,
+      transform: [{ scale: 0.97 }],
+    },
+    disabled: {
+      opacity: 0.5,
+    },
+  });
+
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 function ChatInput({
   chatId,
@@ -60,93 +150,7 @@ function ChatInput({
   onCancelEdit,
 }, ref) {
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      bar: {
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: t.border,
-        backgroundColor: t.chatInputBg,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-      },
-      row: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-      },
-      inputShell: {
-        flex: 1,
-        borderRadius: 22,
-        borderWidth: 1,
-        borderColor: t.inputBorder,
-        backgroundColor: t.background,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        minHeight: 44,
-        justifyContent: "center",
-      },
-      input: {
-        fontSize: 15,
-        color: t.foreground,
-        padding: 0,
-      },
-      roundBtn: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: t.primary,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      attachBtn: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      recordingOverlay: {
-        position: "absolute",
-        left: 0,
-        top: 0,
-        bottom: 0,
-        right: 52,
-        borderRadius: 12,
-        backgroundColor: t.muted,
-        flexDirection: "row",
-        alignItems: "center",
-        paddingHorizontal: 14,
-        gap: 10,
-        pointerEvents: "none",
-      },
-      recDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: t.recording,
-      },
-      recText: {
-        flex: 1,
-        fontSize: 14,
-        fontWeight: "600",
-        color: t.recording,
-      },
-      recTimer: {
-        fontSize: 14,
-        fontWeight: "700",
-        color: t.foreground,
-        minWidth: 38,
-        textAlign: "right",
-      },
-      pressed: {
-        opacity: 0.85,
-        transform: [{ scale: 0.97 }],
-      },
-      disabled: {
-        opacity: 0.5,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
   const {
     sendText,
     sendAudio,
@@ -154,20 +158,24 @@ function ChatInput({
     editTextMessage,
     isSending,
   } = useSendMessage(chatId);
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const {
+    isRecording,
+    recordingSeconds,
+    isRecordingActive,
+    startRecording,
+    stopRecording,
+  } = useVoiceRecorder();
   const insets = useSafeAreaInsets();
   const { progress } = useReanimatedKeyboardAnimation();
   const animatedBarStyle = useAnimatedStyle(() => ({
     paddingBottom: interpolate(
       progress.value,
       [0, 1],
-      [12 + insets.bottom, 12],
+      [spacing.md + insets.bottom, spacing.md],
       "clamp"
     ),
   }));
   const [text, setText] = useState("");
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [attachmentMenuVisible, setAttachmentMenuVisible] = useState(false);
   const [pendingImage, setPendingImage] = useState<{
     uri: string;
@@ -176,9 +184,6 @@ function ChatInput({
   } | null>(null);
   const [imageSending, setImageSending] = useState(false);
   const inputRef = useRef<TextInput>(null);
-  const recordingActiveRef = useRef(false);
-  const recordSessionRef = useRef(0);
-  const recordingStartMsRef = useRef(0);
   const editingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -191,22 +196,6 @@ function ChatInput({
       editingIdRef.current = null;
     }
   }, [editingMessage]);
-
-  useEffect(() => {
-    if (!isRecording) return;
-
-    const updateElapsed = () => {
-      setRecordingSeconds(
-        Math.floor((Date.now() - recordingStartMsRef.current) / 1000)
-      );
-    };
-
-    updateElapsed();
-    const interval = setInterval(updateElapsed, 250);
-    return () => {
-      clearInterval(interval);
-    };
-  }, [isRecording]);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -224,6 +213,7 @@ function ChatInput({
         return;
       }
       const target = editingMessage;
+      lightImpact();
       setText("");
       onCancelEdit?.();
       requestAnimationFrame(() => {
@@ -238,6 +228,7 @@ function ChatInput({
       }
       return;
     }
+    lightImpact();
     setText("");
     onSend?.();
     onCancelReply?.();
@@ -258,63 +249,18 @@ function ChatInput({
     sendText,
   ]);
 
-  const resetRecordingState = useCallback(() => {
-    recordingActiveRef.current = false;
-    recordingStartMsRef.current = 0;
-    setIsRecording(false);
-    setRecordingSeconds(0);
-  }, []);
-
-  const restorePlaybackMode = async () => {
-    try {
-      await setAudioModeAsync({
-        allowsRecording: false,
-        playsInSilentMode: true,
-      });
-    } catch {
-      //
-    }
-  };
-
-  const startRecording = async () => {
+  const handleStartRecording = () => {
     if (isSending || isRecording || text.trim()) return;
-    const session = ++recordSessionRef.current;
-    try {
-      const perm = await requestRecordingPermissionsAsync();
-      if (!perm.granted || recordSessionRef.current !== session) return;
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
-        shouldPlayInBackground: false,
-      });
-      await audioRecorder.prepareToRecordAsync();
-      if (recordSessionRef.current !== session) {
-        await restorePlaybackMode();
-        return;
-      }
-      audioRecorder.record();
-      if (recordSessionRef.current !== session) {
-        await audioRecorder.stop().catch(() => {});
-        resetRecordingState();
-        await restorePlaybackMode();
-        return;
-      }
-      recordingActiveRef.current = true;
-      recordingStartMsRef.current = Date.now();
-      setRecordingSeconds(0);
-      setIsRecording(true);
-    } catch {
-      if (recordSessionRef.current === session) {
-        resetRecordingState();
-      }
-      await restorePlaybackMode();
-    }
+    void startRecording();
   };
 
   const openGallery = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert("", "Permita acesso às fotos para enviar imagens.");
+      Alert.alert(
+        "Permissão necessária",
+        "Permita acesso às fotos para enviar imagens."
+      );
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -336,7 +282,10 @@ function ChatInput({
   const openCamera = useCallback(async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert("", "Permita acesso à câmera para tirar fotos.");
+      Alert.alert(
+        "Permissão necessária",
+        "Permita acesso à câmera para tirar fotos."
+      );
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -359,6 +308,7 @@ function ChatInput({
     const selectedReply = replyTo;
     const payload = pendingImage;
     setImageSending(true);
+    lightImpact();
     try {
       onSend?.();
       onCancelReply?.();
@@ -370,18 +320,10 @@ function ChatInput({
   }, [pendingImage, imageSending, replyTo, onCancelReply, onSend, sendImage]);
 
   const stopRecordingAndSend = async () => {
-    recordSessionRef.current += 1;
-    const wasRecording = recordingActiveRef.current;
     const selectedReply = replyTo;
-    onSend?.();
-    onCancelReply?.();
-    resetRecordingState();
-    if (!wasRecording) return;
-    try {
-      const durationMillis = audioRecorder.getStatus().durationMillis;
-      await audioRecorder.stop();
-      const uri = audioRecorder.uri;
-      if (!uri) return;
+    await stopRecording(async ({ uri, durationMillis }) => {
+      onSend?.();
+      onCancelReply?.();
       await sendAudio({
         uri,
         name: `recording-${Date.now()}.m4a`,
@@ -393,10 +335,7 @@ function ChatInput({
         localUri: uri,
         replyTo: selectedReply,
       });
-    } catch {
-      //
-    }
-    await restorePlaybackMode();
+    });
   };
 
   const isEditing = editingMessage != null;
@@ -421,6 +360,9 @@ function ChatInput({
             onPress={() => setAttachmentMenuVisible(true)}
             disabled={isSending || isRecording}
             hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel="Anexar imagem"
+            accessibilityState={{ disabled: isSending || isRecording }}
             style={({ pressed }) => [
               styles.attachBtn,
               pressed && styles.pressed,
@@ -439,12 +381,13 @@ function ChatInput({
             ref={inputRef}
             value={text}
             placeholder={isEditing ? "Edite a mensagem" : "Digite uma mensagem"}
-            placeholderTextColor={theme.mutedForeground}
+            placeholderTextColor={theme.inputPlaceholder}
+            accessibilityLabel={isEditing ? "Editar mensagem" : "Mensagem"}
             style={styles.input}
             multiline={true}
             editable
             onChangeText={(value) => {
-              if (recordingActiveRef.current) return;
+              if (isRecordingActive()) return;
               setText(value);
             }}
           />
@@ -453,6 +396,9 @@ function ChatInput({
           <Pressable
             onPress={() => void handleSendText()}
             disabled={editSendDisabled}
+            accessibilityRole="button"
+            accessibilityLabel="Salvar edição"
+            accessibilityState={{ disabled: editSendDisabled }}
             style={({ pressed }) => [
               styles.roundBtn,
               pressed && styles.pressed,
@@ -469,6 +415,9 @@ function ChatInput({
           <Pressable
             onPress={() => void handleSendText()}
             disabled={isSending}
+            accessibilityRole="button"
+            accessibilityLabel="Enviar mensagem"
+            accessibilityState={{ disabled: isSending }}
             style={({ pressed }) => [
               styles.roundBtn,
               pressed && styles.pressed,
@@ -483,9 +432,15 @@ function ChatInput({
           </Pressable>
         ) : (
           <Pressable
-            onPressIn={() => void startRecording()}
+            onPressIn={handleStartRecording}
             onPressOut={() => void stopRecordingAndSend()}
             disabled={isSending}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isRecording ? "Gravando mensagem de voz" : "Gravar mensagem de voz"
+            }
+            accessibilityHint="Mantenha pressionado para gravar e solte para enviar"
+            accessibilityState={{ disabled: isSending, busy: isRecording }}
             style={({ pressed }) => [
               styles.roundBtn,
               pressed && !isRecording && styles.pressed,

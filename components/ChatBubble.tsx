@@ -2,9 +2,19 @@ import { ReactionBubble } from "@/components/ReactionBubble";
 import type { Message, Reaction } from "@/types/chat";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
-import { MaterialIcons } from "@expo/vector-icons";
-import React, { useMemo, useRef, useState } from "react";
 import {
+  fontSizes,
+  fontWeights,
+  lineHeights,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
+import { MaterialIcons } from "@expo/vector-icons";
+import React, { useMemo, useRef } from "react";
+import {
+  type AccessibilityActionEvent,
+  type AccessibilityActionInfo,
   Animated,
   PanResponder,
   Pressable,
@@ -14,7 +24,6 @@ import {
 } from "react-native";
 import { AudioBubble } from "./AudioBubble";
 import { ImageBubble } from "./ImageBubble";
-import { ImageViewer } from "./ImageViewer";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { QuotedReply } from "./QuotedReply";
 
@@ -34,12 +43,18 @@ interface ChatBubbleProps {
   reactions?: Reaction[];
   currentUserId?: string;
   onReactionPress?: (messageId: string, pageX: number, pageY: number, width: number, height: number) => void;
-  onReactionChipPress?: () => void;
-  onSenderPress?: () => void;
+  onReactionChipPress?: (messageId: string) => void;
+  onSenderPress?: (senderId: string) => void;
   onReply?: (message: Message) => void;
-  onQuotedReplyPress?: () => void;
+  onCopy?: (message: Message) => void;
+  onEdit?: (message: Message) => void;
+  onDelete?: (message: Message) => void;
+  canModify?: boolean;
+  onQuotedReplyPress?: (replyToMessageId: string) => void;
+  onOpenImage?: (uri: string) => void;
   onRetryImage?: (message: Message) => void;
   onRetryAudio?: (message: Message) => void;
+  onRetryText?: (message: Message) => void;
   replyAvailable?: boolean;
   highlighted?: boolean;
 }
@@ -50,6 +65,153 @@ function formatTime(date: Date) {
     minute: "2-digit",
   });
 }
+
+const RECEIPT_LABELS: Record<"loading" | "sent" | "read", string> = {
+  loading: "enviando",
+  sent: "enviada",
+  read: "lida",
+};
+
+function describeMessageContent(message: Message, audioUnavailable: boolean) {
+  if (message.isDeleted) return "Mensagem apagada";
+  if (message.type === "image") return "Imagem";
+  if (message.type === "audio") {
+    return audioUnavailable ? "Áudio indisponível offline" : "Mensagem de voz";
+  }
+  if (message.decryptionFailed) return "Não foi possível decifrar esta mensagem.";
+  return message.content;
+}
+
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    wrap: {
+      flexDirection: "row",
+      paddingHorizontal: spacing.md,
+      marginBottom: spacing.sm,
+      gap: spacing.sm,
+    },
+    wrapSelf: {
+      justifyContent: "flex-end",
+    },
+    wrapOther: {
+      justifyContent: "flex-start",
+      alignItems: "flex-end",
+    },
+    bubble: {
+      borderRadius: radius.lg,
+      borderWidth: 2,
+      borderColor: "transparent",
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      shadowColor: t.shadow,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: t.shadowOpacity * 0.75,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+    column: {
+      maxWidth: "80%",
+    },
+    columnSelf: {
+      alignItems: "flex-end",
+    },
+    columnOther: {
+      alignItems: "flex-start",
+    },
+    reactionRow: {
+      marginTop: -spacing.sm,
+      zIndex: 1,
+    },
+    reactionRowSelf: {
+      alignItems: "flex-end",
+    },
+    reactionRowOther: {
+      alignItems: "flex-start",
+    },
+    bubbleSelf: {
+      backgroundColor: t.bubbleSelf,
+      borderBottomRightRadius: 6,
+    },
+    bubbleOther: {
+      backgroundColor: t.bubbleOther,
+      borderBottomLeftRadius: 6,
+    },
+    bubbleImage: {
+      paddingHorizontal: spacing.xs,
+      paddingVertical: spacing.xs,
+    },
+    bubblePressed: {
+      opacity: 0.85,
+    },
+    bubbleHighlighted: {
+      borderColor: t.primary,
+    },
+    text: {
+      fontSize: fontSizes.bodySmall,
+      lineHeight: lineHeights.body,
+    },
+    textSelf: {
+      color: t.bubbleSelfForeground,
+    },
+    textOther: {
+      color: t.bubbleOtherForeground,
+    },
+    encryptedFallback: {
+      fontStyle: "italic",
+      opacity: 0.75,
+    },
+    deletedText: {
+      fontSize: fontSizes.subhead,
+      fontStyle: "italic",
+      color: t.mutedForeground,
+    },
+    editedLabel: {
+      fontSize: fontSizes.caption,
+      fontStyle: "italic",
+      color: t.timestamp,
+    },
+    retryRow: {
+      marginTop: spacing.xs,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs,
+    },
+    retryText: {
+      fontSize: fontSizes.footnote,
+      color: t.destructive,
+    },
+    meta: {
+      marginTop: spacing.xs,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs,
+    },
+    metaSelf: {
+      alignItems: "flex-end",
+      justifyContent: "flex-end",
+    },
+    metaOther: {
+      alignItems: "flex-start",
+    },
+    timestamp: {
+      fontSize: fontSizes.caption,
+      color: t.timestamp,
+    },
+    receiptIconSlot: {
+      width: 16,
+      alignItems: "center",
+      marginLeft: spacing.xxs,
+    },
+    senderName: {
+      fontSize: fontSizes.footnote,
+      fontWeight: fontWeights.semibold,
+      marginBottom: spacing.xs,
+      color: t.timestamp,
+    },
+    senderPressed: {
+      opacity: 0.72,
+    },
+  });
 
 function ChatBubbleImpl({
   message,
@@ -70,144 +232,20 @@ function ChatBubbleImpl({
   onReactionChipPress,
   onSenderPress,
   onReply,
+  onCopy,
+  onEdit,
+  onDelete,
+  canModify = false,
   onQuotedReplyPress,
   onRetryImage,
   onRetryAudio,
+  onRetryText,
+  onOpenImage,
   replyAvailable = true,
   highlighted = false,
 }: ChatBubbleProps) {
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      wrap: {
-        flexDirection: "row",
-        paddingHorizontal: 12,
-        marginBottom: 8,
-        gap: 8,
-      },
-      wrapSelf: {
-        justifyContent: "flex-end",
-      },
-      wrapOther: {
-        justifyContent: "flex-start",
-        alignItems: "flex-end",
-      },
-      bubble: {
-        borderRadius: 16,
-        borderWidth: 2,
-        borderColor: "transparent",
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        shadowColor: t.shadow,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: t.shadowOpacity * 0.75,
-        shadowRadius: 2,
-        elevation: 1,
-      },
-      column: {
-        maxWidth: "80%",
-      },
-      columnSelf: {
-        alignItems: "flex-end",
-      },
-      columnOther: {
-        alignItems: "flex-start",
-      },
-      reactionRow: {
-        marginTop: -8,
-        zIndex: 1,
-      },
-      reactionRowSelf: {
-        alignItems: "flex-end",
-      },
-      reactionRowOther: {
-        alignItems: "flex-start",
-      },
-      bubbleSelf: {
-        backgroundColor: t.bubbleSelf,
-        borderBottomRightRadius: 6,
-      },
-      bubbleOther: {
-        backgroundColor: t.bubbleOther,
-        borderBottomLeftRadius: 6,
-      },
-      bubbleImage: {
-        paddingHorizontal: 4,
-        paddingVertical: 4,
-      },
-      bubblePressed: {
-        opacity: 0.85,
-      },
-      bubbleHighlighted: {
-        borderColor: t.primary,
-      },
-      text: {
-        fontSize: 15,
-        lineHeight: 22,
-      },
-      textSelf: {
-        color: t.bubbleSelfForeground,
-      },
-      textOther: {
-        color: t.bubbleOtherForeground,
-      },
-      encryptedFallback: {
-        fontStyle: "italic",
-        opacity: 0.75,
-      },
-      deletedText: {
-        fontSize: 14,
-        fontStyle: "italic",
-        color: t.mutedForeground,
-      },
-      editedLabel: {
-        fontSize: 10,
-        fontStyle: "italic",
-        color: t.timestamp,
-      },
-      retryRow: {
-        marginTop: 6,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 4,
-      },
-      retryText: {
-        fontSize: 12,
-        color: t.destructive,
-      },
-      meta: {
-        marginTop: 4,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 4,
-      },
-      metaSelf: {
-        alignItems: "flex-end",
-        justifyContent: "flex-end",
-      },
-      metaOther: {
-        alignItems: "flex-start",
-      },
-      timestamp: {
-        fontSize: 10,
-        color: t.timestamp,
-      },
-      receiptIconSlot: {
-        width: 16,
-        alignItems: "center",
-        marginLeft: 2,
-      },
-      senderName: {
-        fontSize: 12,
-        fontWeight: "600",
-        marginBottom: 4,
-        color: t.timestamp,
-      },
-      senderPressed: {
-        opacity: 0.72,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
   const selfReadReceipt = isSelf ? readReceipt ?? "sent" : undefined;
   const audioSource =
     message.type === "audio"
@@ -222,7 +260,6 @@ function ChatBubbleImpl({
       message.imageUrl ??
       null
     : null;
-  const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const bubbleRef = useRef<View>(null);
   const swipeX = useRef(new Animated.Value(0)).current;
   const panResponder = useMemo(
@@ -262,12 +299,108 @@ function ChatBubbleImpl({
     });
   };
 
+  const handleSenderPress = onSenderPress
+    ? () => onSenderPress(message.senderId)
+    : undefined;
+  const replyToId = message.replyTo?.id;
+  const handleQuotedReplyPress =
+    onQuotedReplyPress && replyToId && replyAvailable
+      ? () => onQuotedReplyPress(replyToId)
+      : undefined;
+  const handleReactionChipPress = onReactionChipPress
+    ? () => onReactionChipPress(message.id)
+    : undefined;
+
+  const isDeleted = message.isDeleted === true;
+  const isText = message.type === "text";
+  const hasPlayableAudio =
+    message.type === "audio" && !!audioSource && !audioUnavailableOffline;
+  const hasInteractiveContent = !isDeleted && (isImage || hasPlayableAudio);
+  const retryHandler =
+    message.status !== "failed"
+      ? undefined
+      : isImage
+        ? onRetryImage
+        : message.type === "audio"
+          ? onRetryAudio
+          : onRetryText;
+
+  const accessibilityActions: AccessibilityActionInfo[] = [];
+  if (!isDeleted) {
+    if (onReply) accessibilityActions.push({ name: "reply", label: "Responder" });
+    if (onReactionPress) accessibilityActions.push({ name: "react", label: "Reagir" });
+    if (onCopy && isText && message.content) {
+      accessibilityActions.push({ name: "copy", label: "Copiar" });
+    }
+    if (onEdit && isSelf && isText && canModify) {
+      accessibilityActions.push({ name: "edit", label: "Editar" });
+    }
+    if (onDelete && isSelf && canModify) {
+      accessibilityActions.push({ name: "delete", label: "Apagar" });
+    }
+    if (handleQuotedReplyPress) {
+      accessibilityActions.push({
+        name: "openQuote",
+        label: "Ver mensagem respondida",
+      });
+    }
+    if (retryHandler) {
+      accessibilityActions.push({ name: "retry", label: "Tentar de novo" });
+    }
+  }
+
+  const handleAccessibilityAction = (event: AccessibilityActionEvent) => {
+    switch (event.nativeEvent.actionName) {
+      case "reply":
+        onReply?.(message);
+        break;
+      case "react":
+        handleLongPress();
+        break;
+      case "copy":
+        onCopy?.(message);
+        break;
+      case "edit":
+        onEdit?.(message);
+        break;
+      case "delete":
+        onDelete?.(message);
+        break;
+      case "openQuote":
+        handleQuotedReplyPress?.();
+        break;
+      case "retry":
+        retryHandler?.(message);
+        break;
+    }
+  };
+
+  const accessibilityLabel = [
+    senderName ? `${senderName}:` : null,
+    describeMessageContent(message, audioUnavailableOffline),
+    message.isEdited && !isDeleted ? "editada" : null,
+    formatTime(message.timestamp),
+    message.status === "failed"
+      ? "não enviada"
+      : selfReadReceipt && !isDeleted
+        ? RECEIPT_LABELS[selfReadReceipt]
+        : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const messageAccessibilityProps = {
+    accessible: true,
+    accessibilityLabel,
+    accessibilityActions,
+    onAccessibilityAction: handleAccessibilityAction,
+  };
+
   return (
     <View style={[styles.wrap, isSelf ? styles.wrapSelf : styles.wrapOther]}>
       {!isSelf && senderName ? (
         <Pressable
-          onPress={onSenderPress}
-          disabled={!onSenderPress}
+          onPress={handleSenderPress}
+          disabled={!handleSenderPress}
           hitSlop={8}
           style={({ pressed }) => pressed && styles.senderPressed}
         >
@@ -286,6 +419,9 @@ function ChatBubbleImpl({
           ref={bubbleRef}
           onLongPress={handleLongPress}
           delayLongPress={400}
+          {...(hasInteractiveContent
+            ? { accessible: false }
+            : messageAccessibilityProps)}
           style={({ pressed }) => [
             styles.bubble,
             isSelf ? styles.bubbleSelf : styles.bubbleOther,
@@ -297,7 +433,7 @@ function ChatBubbleImpl({
           {senderName ? (
             <Text
               style={styles.senderName}
-              onPress={onSenderPress}
+              onPress={handleSenderPress}
               suppressHighlighting
             >
               {senderName}
@@ -308,7 +444,7 @@ function ChatBubbleImpl({
               reply={message.replyTo}
               available={replyAvailable}
               isSelf={isSelf}
-              onPress={onQuotedReplyPress}
+              onPress={handleQuotedReplyPress}
             />
           ) : null}
           {message.isDeleted ? (
@@ -318,7 +454,7 @@ function ChatBubbleImpl({
               message={message}
               isSelf={isSelf}
               onPress={() => {
-                if (fullImageUri) setImageViewerOpen(true);
+                if (fullImageUri) onOpenImage?.(fullImageUri);
               }}
               onLongPress={handleLongPress}
               onRetry={
@@ -374,23 +510,38 @@ function ChatBubbleImpl({
               Não foi possível decifrar esta mensagem.
             </Text>
           ) : (
-            <Text
-              style={[
-                styles.text,
-                isSelf
-                  ? styles.textSelf
-                  : styles.textOther,
-              ]}
-            >
-              {message.content}
-            </Text>
+            <>
+              <Text
+                style={[
+                  styles.text,
+                  isSelf
+                    ? styles.textSelf
+                    : styles.textOther,
+                ]}
+              >
+                {message.content}
+              </Text>
+              {message.status === "failed" && onRetryText ? (
+                <Pressable
+                  style={styles.retryRow}
+                  onPress={() => onRetryText(message)}
+                  hitSlop={8}
+                >
+                  <MaterialIcons name="error-outline" size={16} color={theme.destructive} />
+                  <Text style={styles.retryText}>Não enviada. Tentar de novo</Text>
+                </Pressable>
+              ) : null}
+            </>
           )}
-          <View style={[styles.meta, isSelf ? styles.metaSelf : styles.metaOther]}>
+          <View
+            style={[styles.meta, isSelf ? styles.metaSelf : styles.metaOther]}
+            {...(hasInteractiveContent ? messageAccessibilityProps : null)}
+          >
             {message.isEdited && !message.isDeleted ? (
               <Text style={styles.editedLabel}>editada</Text>
             ) : null}
             <Text style={styles.timestamp}>{formatTime(message.timestamp)}</Text>
-            {selfReadReceipt && !message.isDeleted ? (
+            {selfReadReceipt && !message.isDeleted && message.status !== "failed" ? (
               <View style={styles.receiptIconSlot}>
                 <MaterialIcons
                   name={
@@ -409,23 +560,16 @@ function ChatBubbleImpl({
             ) : null}
           </View>
         </Pressable>
-        {reactions && currentUserId && onReactionChipPress && !message.isDeleted ? (
+        {reactions && currentUserId && handleReactionChipPress && !message.isDeleted ? (
           <View style={[styles.reactionRow, isSelf ? styles.reactionRowSelf : styles.reactionRowOther]}>
             <ReactionBubble
               reactions={reactions}
               currentUserId={currentUserId}
-              onPress={onReactionChipPress}
+              onPress={handleReactionChipPress}
             />
           </View>
         ) : null}
       </Animated.View>
-      {isImage ? (
-        <ImageViewer
-          uri={fullImageUri}
-          visible={imageViewerOpen}
-          onClose={() => setImageViewerOpen(false)}
-        />
-      ) : null}
     </View>
   );
 }

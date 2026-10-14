@@ -1,6 +1,13 @@
 import type { MessageReplySnapshot } from "@/types/chat";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
+import {
+  fontSizes,
+  fontWeights,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -9,53 +16,54 @@ type ReplyPreviewProps = {
   onCancel: () => void;
 };
 
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    wrap: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: radius.md,
+      backgroundColor: t.background,
+      borderWidth: 1,
+      borderColor: t.border,
+      marginBottom: spacing.sm,
+      overflow: "hidden",
+    },
+    accent: {
+      alignSelf: "stretch",
+      width: 3,
+      backgroundColor: t.primary,
+    },
+    content: {
+      flex: 1,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    sender: {
+      fontSize: fontSizes.footnote,
+      fontWeight: fontWeights.bold,
+      color: t.primary,
+    },
+    preview: {
+      marginTop: spacing.xxs,
+      fontSize: fontSizes.subhead,
+      color: t.mutedForeground,
+    },
+    cancelButton: {
+      width: 36,
+      height: 36,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: spacing.xs,
+      borderRadius: radius.pill,
+    },
+    cancelButtonPressed: {
+      backgroundColor: t.muted,
+    },
+  });
+
 export function ReplyPreview({ reply, onCancel }: ReplyPreviewProps) {
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      wrap: {
-        flexDirection: "row",
-        alignItems: "center",
-        borderRadius: 12,
-        backgroundColor: t.background,
-        borderWidth: 1,
-        borderColor: t.border,
-        marginBottom: 8,
-        overflow: "hidden",
-      },
-      accent: {
-        alignSelf: "stretch",
-        width: 3,
-        backgroundColor: t.primary,
-      },
-      content: {
-        flex: 1,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-      },
-      sender: {
-        fontSize: 12,
-        fontWeight: "700",
-        color: t.primary,
-      },
-      preview: {
-        marginTop: 2,
-        fontSize: 13,
-        color: t.mutedForeground,
-      },
-      cancelButton: {
-        width: 36,
-        height: 36,
-        alignItems: "center",
-        justifyContent: "center",
-        marginRight: 4,
-        borderRadius: 18,
-      },
-      cancelButtonPressed: {
-        backgroundColor: t.muted,
-      },
-    })
-  );
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.wrap}>
       <View style={styles.accent} />

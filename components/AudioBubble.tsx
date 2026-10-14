@@ -1,9 +1,18 @@
 import { isRemoteUrl, mediaAuthHeaders } from "@/src/api/client";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
-import { Ionicons } from "@expo/vector-icons";
 import {
-  setAudioModeAsync,
+  fontSizes,
+  fontWeights,
+  maxFontScale,
+  radius,
+  spacing,
+  type ThemeTokens,
+} from "@/theme/tokens";
+import { Ionicons } from "@expo/vector-icons";
+import { ensurePlaybackAudioMode } from "@/lib/audioSession";
+import {
+  type AudioSource,
   useAudioPlayer,
   useAudioPlayerStatus,
 } from "expo-audio";
@@ -15,6 +24,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -38,6 +48,93 @@ function formatTime(seconds: number) {
 }
 
 const PLAYBACK_RATES: (1 | 1.5 | 2)[] = [1, 1.5, 2];
+const ROW_PREFERRED_MIN_WIDTH = 240;
+const BUBBLE_MAX_WIDTH_RATIO = 0.8;
+const BUBBLE_CHROME_WIDTH = 80;
+const SEEK_STEP_SECONDS = 5;
+
+function buildAudioSource(audioUrl: string): AudioSource {
+  return {
+    uri: audioUrl,
+    headers: isRemoteUrl(audioUrl) ? mediaAuthHeaders() : undefined,
+  };
+}
+
+const createStyles = (t: ThemeTokens) =>
+  StyleSheet.create({
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.md,
+    },
+    playBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: radius.pill,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    playSelf: {
+      backgroundColor: t.primaryTintStrong,
+    },
+    playOther: {
+      backgroundColor: t.muted,
+    },
+    playDisabled: {
+      opacity: 0.7,
+    },
+    trackCol: {
+      flex: 1,
+      gap: spacing.xxs,
+    },
+    rateBtn: {
+      minWidth: 34,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.md,
+      backgroundColor: t.progressTrack,
+    },
+    rateText: {
+      fontSize: fontSizes.caption,
+      fontWeight: fontWeights.semibold,
+      color: t.timestamp,
+    },
+    trackHitArea: {
+      height: 28,
+      justifyContent: "center",
+    },
+    track: {
+      height: 6,
+      borderRadius: radius.pill,
+      backgroundColor: t.border,
+      overflow: "hidden",
+    },
+    fill: {
+      height: "100%",
+      borderRadius: radius.pill,
+      backgroundColor: t.audioProgress,
+    },
+    knob: {
+      position: "absolute",
+      top: 7,
+      width: 14,
+      height: 14,
+      marginLeft: -7,
+      borderRadius: radius.pill,
+      backgroundColor: t.audioProgress,
+      borderWidth: 2,
+      borderColor: t.background,
+      shadowColor: t.shadow,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: t.shadowOpacity * 2,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    time: {
+      fontSize: fontSizes.caption,
+      color: t.timestamp,
+    },
+  });
 
 export function AudioBubble({
   messageId,
@@ -52,91 +149,19 @@ export function AudioBubble({
   onPlaybackRateChange,
 }: AudioBubbleProps) {
   const { theme } = useTheme();
-  const styles = useThemedStyles((t) =>
-    StyleSheet.create({
-      row: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
-        minWidth: 240,
-      },
-      playBtn: {
-        width: 42,
-        height: 42,
-        borderRadius: 21,
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      playSelf: {
-        backgroundColor: t.primaryTintStrong,
-      },
-      playOther: {
-        backgroundColor: t.muted,
-      },
-      playDisabled: {
-        opacity: 0.7,
-      },
-      trackCol: {
-        flex: 1,
-        gap: 2,
-      },
-      rateBtn: {
-        minWidth: 34,
-        paddingHorizontal: 7,
-        paddingVertical: 5,
-        borderRadius: 11,
-        backgroundColor: t.progressTrack,
-      },
-      rateText: {
-        fontSize: 11,
-        fontWeight: "600",
-        color: t.timestamp,
-      },
-      trackHitArea: {
-        height: 28,
-        justifyContent: "center",
-      },
-      track: {
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: t.border,
-        overflow: "hidden",
-      },
-      fill: {
-        height: "100%",
-        borderRadius: 3,
-        backgroundColor: t.audioProgress,
-      },
-      knob: {
-        position: "absolute",
-        top: 7,
-        width: 14,
-        height: 14,
-        marginLeft: -7,
-        borderRadius: 7,
-        backgroundColor: t.audioProgress,
-        borderWidth: 2,
-        borderColor: t.background,
-        shadowColor: t.shadow,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: t.shadowOpacity * 2,
-        shadowRadius: 2,
-        elevation: 2,
-      },
-      time: {
-        fontSize: 11,
-        color: t.timestamp,
-      },
-    })
+  const { width: windowWidth } = useWindowDimensions();
+  const rowMinWidth = Math.min(
+    ROW_PREFERRED_MIN_WIDTH,
+    Math.round(windowWidth * BUBBLE_MAX_WIDTH_RATIO - BUBBLE_CHROME_WIDTH)
   );
-  const player = useAudioPlayer(
-    {
-      uri: audioUrl,
-      headers: isRemoteUrl(audioUrl) ? mediaAuthHeaders() : undefined,
-    },
-    { updateInterval: 200 }
-  );
+  const styles = useThemedStyles(createStyles);
+  const [initialSource] = useState(() => buildAudioSource(audioUrl));
+  const player = useAudioPlayer(initialSource, { updateInterval: 200 });
   const status = useAudioPlayerStatus(player);
+  const loadedAudioUrlRef = useRef(audioUrl);
+  const isActiveRef = useRef(shouldPlay);
+  const finishHandledRef = useRef(false);
+  const onAudioFinishedRef = useRef(onAudioFinished);
   const [waitingForPlayback, setWaitingForPlayback] = useState(false);
   const [trackWidth, setTrackWidth] = useState(0);
   const playbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,11 +189,16 @@ export function AudioBubble({
   }, []);
 
   useEffect(() => {
-    setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: false,
-    }).catch(() => {});
-  }, []);
+    onAudioFinishedRef.current = onAudioFinished;
+  }, [onAudioFinished]);
+
+  useEffect(() => {
+    if (loadedAudioUrlRef.current === audioUrl) return;
+    if (status.playing || waitingForPlayback || status.currentTime > 0) return;
+    loadedAudioUrlRef.current = audioUrl;
+    player.replace(buildAudioSource(audioUrl));
+    player.setPlaybackRate(playbackRate);
+  }, [audioUrl, player, playbackRate, status.currentTime, status.playing, waitingForPlayback]);
 
   useEffect(() => {
     return () => {
@@ -183,6 +213,14 @@ export function AudioBubble({
   }, [playbackRate, player]);
 
   useEffect(() => {
+    const wasActive = isActiveRef.current;
+    isActiveRef.current = shouldPlay;
+    if (wasActive && !shouldPlay) {
+      player.pause();
+    }
+  }, [player, shouldPlay]);
+
+  useEffect(() => {
     if (!shouldPlay) {
       autoPlayAttemptedRef.current = false;
       return;
@@ -191,11 +229,17 @@ export function AudioBubble({
 
     autoPlayAttemptedRef.current = true;
     startWaitingForPlayback();
-    try {
-      player.play();
-    } catch {
-      stopWaitingForPlayback();
-    }
+    void ensurePlaybackAudioMode().then(() => {
+      if (!isActiveRef.current) {
+        stopWaitingForPlayback();
+        return;
+      }
+      try {
+        player.play();
+      } catch {
+        stopWaitingForPlayback();
+      }
+    });
   }, [
     player,
     shouldPlay,
@@ -212,10 +256,15 @@ export function AudioBubble({
   }, [shouldPlay, status.didJustFinish, status.playing, stopWaitingForPlayback]);
 
   useEffect(() => {
-    if (!status.didJustFinish) return;
+    if (!status.didJustFinish) {
+      finishHandledRef.current = false;
+      return;
+    }
+    if (finishHandledRef.current) return;
+    finishHandledRef.current = true;
     player.pause();
-    onAudioFinished(nextInSequenceId);
-  }, [nextInSequenceId, onAudioFinished, player, status.didJustFinish]);
+    onAudioFinishedRef.current(nextInSequenceId);
+  }, [nextInSequenceId, player, status.didJustFinish]);
 
   const togglePlay = useCallback(async () => {
     if (status.playing) {
@@ -227,6 +276,7 @@ export function AudioBubble({
       }
       onRequestPlay(messageId);
       startWaitingForPlayback();
+      await ensurePlaybackAudioMode();
       try {
         await player.play();
       } catch {
@@ -312,11 +362,27 @@ export function AudioBubble({
     [canSeek, measureTrack, seekToPagePosition, syncTrackPositionFromTouch],
   );
 
+  const seekBy = (deltaSeconds: number) => {
+    if (duration <= 0) return;
+    const target = Math.min(Math.max(currentTime + deltaSeconds, 0), duration);
+    stopWaitingForPlayback();
+    void player.seekTo(target).catch(() => {});
+  };
+
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, { minWidth: rowMinWidth }]}>
       <Pressable
         onPress={() => void togglePlay()}
         disabled={isLoading}
+        accessibilityRole="button"
+        accessibilityLabel={
+          isLoading
+            ? "Carregando áudio"
+            : isPlaying
+              ? "Pausar áudio"
+              : "Reproduzir áudio"
+        }
+        accessibilityState={{ disabled: isLoading, busy: isLoading }}
         style={[
           styles.playBtn,
           isSelf ? styles.playSelf : styles.playOther,
@@ -330,18 +396,47 @@ export function AudioBubble({
             name={isPlaying ? "pause" : "play"}
             size={20}
             color={theme.primary}
-            style={isPlaying ? undefined : { marginLeft: 2 }}
+            style={isPlaying ? undefined : { marginLeft: spacing.xxs }}
           />
         )}
       </Pressable>
-      <Pressable onPress={cyclePlaybackRate} style={styles.rateBtn}>
-        <Text style={styles.rateText}>{playbackRate.toFixed(1)}x</Text>
+      <Pressable
+        onPress={cyclePlaybackRate}
+        style={styles.rateBtn}
+        hitSlop={{ top: 11, bottom: 11, left: 6, right: 6 }}
+        accessibilityRole="button"
+        accessibilityLabel={`Velocidade ${playbackRate.toFixed(1).replace(".", ",")}x`}
+        accessibilityHint="Altera a velocidade de reprodução"
+      >
+        <Text
+          style={styles.rateText}
+          maxFontSizeMultiplier={maxFontScale.compact}
+        >
+          {playbackRate.toFixed(1)}x
+        </Text>
       </Pressable>
       <View style={styles.trackCol}>
         <View
           ref={trackRef}
           style={styles.trackHitArea}
           onLayout={handleTrackLayout}
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel="Posição do áudio"
+          accessibilityValue={{
+            text: `${formatTime(currentTime)} de ${formatTime(duration)}`,
+          }}
+          accessibilityActions={[
+            { name: "increment", label: "Avançar" },
+            { name: "decrement", label: "Voltar" },
+          ]}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === "increment") {
+              seekBy(SEEK_STEP_SECONDS);
+            } else if (event.nativeEvent.actionName === "decrement") {
+              seekBy(-SEEK_STEP_SECONDS);
+            }
+          }}
           {...trackPanResponder.panHandlers}
         >
           <View style={styles.track}>

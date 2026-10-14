@@ -1,7 +1,28 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { API_WS_URL, apiFetch, getAccessToken } from "./client";
+import { base64ToBytes, utf8Decode } from "@/lib/crypto/encoding";
+import { API_WS_URL, apiFetch, getAccessToken, refreshApiSession } from "./client";
 
 const LAST_EVENT_AT_KEY = "chat_back.last_event_at";
+const TOKEN_EXPIRY_MARGIN_MS = 30_000;
+const CATCH_UP_PAGE_SIZE = 500;
+const CATCH_UP_OVERLAP_MS = 10_000;
+const SEEN_EVENT_IDS_LIMIT = 2_000;
+
+function eventTime(occurredAt: string): number {
+  const time = Date.parse(occurredAt);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function accessTokenExpiresSoon(token: string): boolean {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payload.padEnd(Math.ceil(payload.length / 4) * 4, "=");
+    const { exp } = JSON.parse(utf8Decode(base64ToBytes(padded))) as { exp?: number };
+    return typeof exp === "number" && exp * 1000 - TOKEN_EXPIRY_MARGIN_MS < Date.now();
+  } catch {
+    return false;
+  }
+}
 
 export type RealtimeEvent = {
   id: string;
@@ -24,18 +45,32 @@ export class RealtimeClient {
   private lastEventAt: string | null = null;
   private cursorLoaded = false;
   private catchUpInFlight: Promise<void> | null = null;
+  private seenEventIds = new Set<string>();
+
+  private connecting = false;
 
   start() {
+    if (!this.stopped && (this.socket || this.reconnectTimer || this.connecting)) return;
     this.stopped = false;
-    this.connect();
+    void this.connect();
   }
 
   stop() {
     this.stopped = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
-    this.socket?.close();
+    this.closeSocket();
+  }
+
+  private closeSocket() {
+    const socket = this.socket;
     this.socket = null;
+    if (!socket) return;
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onclose = null;
+    socket.onerror = null;
+    socket.close();
   }
 
   subscribe(listener: Listener) {
@@ -49,10 +84,12 @@ export class RealtimeClient {
   private async loadCursor(): Promise<string> {
     if (this.cursorLoaded && this.lastEventAt) return this.lastEventAt;
     const stored = await AsyncStorage.getItem(LAST_EVENT_AT_KEY).catch(() => null);
+    const firstLoad = !this.cursorLoaded;
     this.cursorLoaded = true;
-    if (!this.lastEventAt || (stored && stored > this.lastEventAt)) {
-      this.lastEventAt = stored ?? new Date().toISOString();
+    if (stored && (firstLoad || !this.lastEventAt)) {
+      return stored;
     }
+    this.lastEventAt ??= new Date().toISOString();
     if (!stored) {
       await AsyncStorage.setItem(LAST_EVENT_AT_KEY, this.lastEventAt).catch(() => {});
     }
@@ -62,10 +99,18 @@ export class RealtimeClient {
   catchUp(): Promise<void> {
     if (this.catchUpInFlight) return this.catchUpInFlight;
     this.catchUpInFlight = (async () => {
-      const after = await this.loadCursor();
-      const qs = new URLSearchParams({ after });
-      const events = await apiFetch<RealtimeEvent[]>(`/realtime/events?${qs}`).catch(() => []);
-      for (const event of events) this.dispatch(event);
+      const cursor = await this.loadCursor();
+      let after = new Date(eventTime(cursor) - CATCH_UP_OVERLAP_MS).toISOString();
+      for (;;) {
+        const qs = new URLSearchParams({ after, limit: String(CATCH_UP_PAGE_SIZE) });
+        const events = await apiFetch<RealtimeEvent[]>(`/realtime/events?${qs}`).catch(
+          () => null,
+        );
+        if (!events) return;
+        for (const event of events) this.dispatch(event);
+        if (events.length < CATCH_UP_PAGE_SIZE) return;
+        after = events[events.length - 1].occurred_at;
+      }
     })().finally(() => {
       this.catchUpInFlight = null;
     });
@@ -75,12 +120,27 @@ export class RealtimeClient {
   async resetCursor(): Promise<void> {
     this.lastEventAt = null;
     this.cursorLoaded = false;
+    this.seenEventIds.clear();
     await AsyncStorage.removeItem(LAST_EVENT_AT_KEY).catch(() => {});
   }
 
-  private connect() {
-    const token = getAccessToken();
-    if (this.stopped || !token) return;
+  private async connect() {
+    if (this.stopped || this.connecting) return;
+    this.connecting = true;
+    try {
+      let token = getAccessToken();
+      if (token && accessTokenExpiresSoon(token) && (await refreshApiSession())) {
+        token = getAccessToken();
+      }
+      if (this.stopped || !token) return;
+      this.openSocket(token);
+    } finally {
+      this.connecting = false;
+    }
+  }
+
+  private openSocket(token: string) {
+    this.closeSocket();
     const separator = API_WS_URL.includes("?") ? "&" : "?";
     const ws = new WebSocket(`${API_WS_URL}${separator}access_token=${encodeURIComponent(token)}`);
     this.socket = ws;
@@ -102,13 +162,30 @@ export class RealtimeClient {
         this.dispatch(data as RealtimeEvent);
       } catch {}
     };
-    ws.onclose = () => this.scheduleReconnect();
-    ws.onerror = () => this.scheduleReconnect();
+    ws.onclose = () => this.handleSocketLost(ws);
+    ws.onerror = () => this.handleSocketLost(ws);
+  }
+
+  private handleSocketLost(ws: WebSocket) {
+    if (this.socket !== ws) return;
+    this.closeSocket();
+    this.scheduleReconnect();
+  }
+
+  private markSeen(eventId: string): boolean {
+    if (this.seenEventIds.has(eventId)) return false;
+    this.seenEventIds.add(eventId);
+    if (this.seenEventIds.size > SEEN_EVENT_IDS_LIMIT) {
+      const oldest = this.seenEventIds.values().next().value;
+      if (oldest !== undefined) this.seenEventIds.delete(oldest);
+    }
+    return true;
   }
 
   private dispatch(event: RealtimeEvent) {
     if (!event?.occurred_at) return;
-    if (!this.lastEventAt || event.occurred_at > this.lastEventAt) {
+    if (event.id && !this.markSeen(event.id)) return;
+    if (!this.lastEventAt || eventTime(event.occurred_at) >= eventTime(this.lastEventAt)) {
       this.lastEventAt = event.occurred_at;
       void AsyncStorage.setItem(LAST_EVENT_AT_KEY, event.occurred_at).catch(() => {});
     }
@@ -121,7 +198,7 @@ export class RealtimeClient {
     this.attempts += 1;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect();
+      void this.connect();
     }, delay);
   }
 }

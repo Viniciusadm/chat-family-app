@@ -11,6 +11,32 @@ type ReactionAction =
   | { type: "add"; messageId: string; userId: string; emoji: string }
   | { type: "remove"; messageId: string; userId: string };
 
+function sameReactions(a: Reaction[], b: Reaction[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (reaction, index) =>
+      reaction.userId === b[index].userId && reaction.emoji === b[index].emoji
+  );
+}
+
+function reuseUnchangedReactions(
+  previous: Record<string, Reaction[]>,
+  next: Record<string, Reaction[]>
+): Record<string, Reaction[]> {
+  const merged: Record<string, Reaction[]> = {};
+  let changed = Object.keys(previous).length !== Object.keys(next).length;
+  for (const [messageId, reactions] of Object.entries(next)) {
+    const prior = previous[messageId];
+    if (prior && sameReactions(prior, reactions)) {
+      merged[messageId] = prior;
+    } else {
+      merged[messageId] = reactions;
+      changed = true;
+    }
+  }
+  return changed ? merged : previous;
+}
+
 export function useReactions(chatId: string) {
   const { currentUser } = useAuth();
   const { isOnline } = useConnectivity();
@@ -21,7 +47,7 @@ export function useReactions(chatId: string) {
     async (activeChatId: string, active: () => boolean) => {
       const data = await ReactionRepository.getReactions(activeChatId);
       if (!active()) return;
-      setReactions(data);
+      setReactions((previous) => reuseUnchangedReactions(previous, data));
     },
     []
   );
@@ -50,17 +76,16 @@ export function useReactions(chatId: string) {
       if (action.type === "add") {
         await ReactionRepository.saveReaction(messageId, userId, action.emoji, "loading", chatId);
         if (isOnline) {
-          try {
-            await upsertReaction(chatId, messageId, action.emoji);
-            await ReactionRepository.updateStatus(messageId, userId, "sent");
-          } catch {
-            await ReactionRepository.updateStatus(messageId, userId, "loading");
-          }
+          await upsertReaction(chatId, messageId, action.emoji)
+            .then(() => ReactionRepository.confirmReactionSent(messageId, userId, action.emoji))
+            .catch(() => {});
         }
       } else {
-        await ReactionRepository.removeReaction(messageId, userId, chatId);
+        await ReactionRepository.markRemoving(messageId, userId, chatId);
         if (isOnline) {
-          await removeReaction(chatId, messageId).catch(() => {});
+          await removeReaction(chatId, messageId)
+            .then(() => ReactionRepository.deleteRemovedReaction(messageId, userId))
+            .catch(() => {});
         }
       }
     },
