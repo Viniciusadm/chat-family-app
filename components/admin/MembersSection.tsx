@@ -90,12 +90,20 @@ export function MembersSection({
               <Text style={cardStyles.cardTitle}>{member.name}</Text>
               {member.loginCode ? (
                 <View style={styles.codeRow}>
-                  <Text style={styles.codeText}>{member.loginCode}</Text>
+                  <Text style={styles.codeText}>
+                    {member.role === "adult"
+                      ? `Convite: ${member.loginCode}`
+                      : member.loginCode}
+                  </Text>
                   <Pressable
                     onPress={() => void copyLoginCode(member.loginCode!)}
                     hitSlop={12}
                     accessibilityRole="button"
-                    accessibilityLabel={`Copiar código de acesso de ${member.name}`}
+                    accessibilityLabel={
+                      member.role === "adult"
+                        ? `Copiar código de convite de ${member.name}`
+                        : `Copiar código de acesso de ${member.name}`
+                    }
                     style={({ pressed }) => pressed && cardStyles.pressed}
                   >
                     <Ionicons

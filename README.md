@@ -9,7 +9,7 @@ Chat Family is a closed group messenger for a family, where the server carries t
 
 ## What the app does
 
-Adults sign in with e-mail and password; children sign in with a login code. A new device waits on a screen (`aguardando`) until an adult approves it from the admin screen.
+Adults sign in with e-mail and password; children sign in with a login code. An adult added from the admin screen receives an invite code and sets their e-mail and password with it ("Tenho um convite" on the login screen). A new device waits on a screen (`aguardando`) until an adult approves it from the admin screen.
 
 Text messages are encrypted on the device with a per-chat AES-GCM key (`@noble/ciphers`). To give another device access to a chat, the app wraps that key for the device's X25519 public key, using an ephemeral key pair and HKDF-SHA256, and uploads the result as a key share. Each user can also keep a backup of their chat keys encrypted with a key derived from a password (PBKDF2-SHA256, 600,000 iterations), which restores the conversations on a new device. Keys stay in `expo-secure-store`.
 

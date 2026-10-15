@@ -32,11 +32,16 @@ export function ChatsSection({
   const memberProfiles = Object.fromEntries(
     members.map((member) => [member.id, { name: member.name }])
   );
+  const visibleChats = chats.filter(
+    (chat) =>
+      chat.isGroup ||
+      chat.participants.every((participantId) => participantId in memberProfiles)
+  );
 
   return (
     <>
       <SectionTitle icon="chatbubbles-outline" label="Conversas" />
-      {chats.map((chat) => {
+      {visibleChats.map((chat) => {
         const displayName = getChatDisplayName(
           chat,
           currentUserId,

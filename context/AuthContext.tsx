@@ -49,6 +49,7 @@ interface AuthContextValue {
   loginWithEmail: (email: string, password: string) => Promise<void>;
   registerWithEmail: (email: string, password: string, name: string) => Promise<void>;
   loginWithChildCode: (code: string) => Promise<void>;
+  acceptAdultInvite: (code: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   setCurrentUserPhoto: (photoUrl: string | null, photoPath: string | null) => Promise<void>;
   deletedAccountMessage: string | null;
@@ -311,6 +312,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [devicePayload, establishSession]
   );
 
+  const acceptAdultInvite = useCallback(
+    async (code: string, email: string, password: string) => {
+      setLoading(true);
+      try {
+        const id = deviceIdRef.current || await getOrCreateDeviceId();
+        const payload = await devicePayload();
+        const response = await authApi.acceptInvite({
+          code,
+          email,
+          password,
+          device_id: id,
+          ...payload,
+        });
+        await establishSession(response.user, true);
+      } catch (error) {
+        setLoading(false);
+        throw error;
+      }
+    },
+    [devicePayload, establishSession]
+  );
+
   const logout = useCallback(async () => {
     const uid = authUserId;
     try {
@@ -345,6 +368,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loginWithEmail,
         registerWithEmail,
         loginWithChildCode,
+        acceptAdultInvite,
         logout,
         setCurrentUserPhoto,
         deletedAccountMessage,

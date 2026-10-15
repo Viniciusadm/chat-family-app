@@ -196,6 +196,7 @@ const MIGRATIONS: ((db: SQLite.SQLiteDatabase) => Promise<void>)[] = [
 
 async function migrate(db: SQLite.SQLiteDatabase) {
   await db.execAsync("PRAGMA journal_mode = WAL;");
+  await db.execAsync("PRAGMA busy_timeout = 5000;");
   const row = await db.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
   let version = row?.user_version ?? 0;
   while (version < MIGRATIONS.length) {

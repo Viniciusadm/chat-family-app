@@ -66,6 +66,23 @@ export async function childLogin(body: {
   return response;
 }
 
+export async function acceptInvite(body: {
+  code: string;
+  email: string;
+  password: string;
+  device_id: string;
+  push_token?: string | null;
+  public_key?: string | null;
+}) {
+  const response = await apiFetch<TokenResponse>("/auth/accept-invite", {
+    method: "POST",
+    body,
+    auth: false,
+  });
+  await setTokens(response);
+  return response;
+}
+
 export function me() {
   return apiFetch<ApiUser>("/auth/me");
 }
