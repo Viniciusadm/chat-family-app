@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import { base64ToBytes, bytesToBase64 } from "./crypto/encoding";
-import { getDatabase } from "./db";
+import { getDatabase, withExclusiveWrite } from "./db";
 
 const DEVICE_PRIV_KEY = "device-priv";
 const CONV_KEY_PREFIX = "convkey-";
@@ -21,10 +21,11 @@ async function migrateLegacyIndex(): Promise<void> {
   } catch {
     ids = [];
   }
-  const db = await getDatabase();
-  for (const chatId of ids) {
-    await db.runAsync("INSERT OR IGNORE INTO conversation_keys (chat_id) VALUES (?)", [chatId]);
-  }
+  await withExclusiveWrite(async (tx) => {
+    for (const chatId of ids) {
+      await tx.runAsync("INSERT OR IGNORE INTO conversation_keys (chat_id) VALUES (?)", [chatId]);
+    }
+  });
   await SecureStore.deleteItemAsync(LEGACY_CONV_KEY_INDEX);
 }
 
@@ -50,13 +51,17 @@ export const SecureKeyStore = {
   },
   async setConversationKey(chatId: string, key: Uint8Array): Promise<void> {
     await SecureStore.setItemAsync(CONV_KEY_PREFIX + chatId, bytesToBase64(key), KEY_STORE_OPTIONS);
-    const db = await indexDatabase();
-    await db.runAsync("INSERT OR IGNORE INTO conversation_keys (chat_id) VALUES (?)", [chatId]);
+    await indexDatabase();
+    await withExclusiveWrite(async (tx) => {
+      await tx.runAsync("INSERT OR IGNORE INTO conversation_keys (chat_id) VALUES (?)", [chatId]);
+    });
   },
   async removeConversationKey(chatId: string): Promise<void> {
     await SecureStore.deleteItemAsync(CONV_KEY_PREFIX + chatId, KEY_STORE_OPTIONS);
-    const db = await indexDatabase();
-    await db.runAsync("DELETE FROM conversation_keys WHERE chat_id = ?", [chatId]);
+    await indexDatabase();
+    await withExclusiveWrite(async (tx) => {
+      await tx.runAsync("DELETE FROM conversation_keys WHERE chat_id = ?", [chatId]);
+    });
   },
   async listConversationKeyChatIds(): Promise<string[]> {
     const db = await indexDatabase();

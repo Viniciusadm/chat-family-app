@@ -110,7 +110,6 @@ const createStyles = (t: ThemeTokens) =>
       justifyContent: "center",
       gap: spacing.sm,
       paddingHorizontal: spacing.xxxl,
-      transform: [{ scaleY: -1 }],
     },
     emptyTitle: {
       fontSize: fontSizes.body,

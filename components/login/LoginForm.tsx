@@ -18,6 +18,7 @@ interface LoginFormProps {
   onChangePassword: (value: string) => void;
   onSubmit: () => void;
   onCreateAccount: () => void;
+  onAcceptInvite: () => void;
   onChildLogin: () => void;
 }
 
@@ -105,6 +106,7 @@ export function LoginForm({
   onChangePassword,
   onSubmit,
   onCreateAccount,
+  onAcceptInvite,
   onChildLogin,
 }: LoginFormProps) {
   const { theme } = useTheme();
@@ -157,6 +159,17 @@ export function LoginForm({
         ]}
       >
         <Text style={styles.ghostBtnText}>Criar conta</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onAcceptInvite}
+        disabled={busy}
+        style={({ pressed }) => [
+          styles.ghostBtn,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={styles.ghostBtnText}>Tenho um convite</Text>
       </Pressable>
       <View style={styles.dividerRow}>
         <View style={styles.divider} />

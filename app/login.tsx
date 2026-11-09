@@ -1,9 +1,11 @@
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { LoadingDots } from "@/components/LoadingDots";
 import { ChildCodeModal } from "@/components/login/ChildCodeModal";
+import { InviteForm } from "@/components/login/InviteForm";
 import { LoginForm } from "@/components/login/LoginForm";
 import { RegisterForm } from "@/components/login/RegisterForm";
 import { authErrorMessage } from "@/components/login/authErrorMessage";
+import { ApiError } from "@/src/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
@@ -25,7 +27,7 @@ import {
   View,
 } from "react-native";
 
-type ViewMode = "login" | "register";
+type ViewMode = "login" | "register" | "invite";
 
 const createStyles = (t: ThemeTokens) =>
   StyleSheet.create({
@@ -78,6 +80,7 @@ export default function LoginScreen() {
     loginWithEmail,
     registerWithEmail,
     loginWithChildCode,
+    acceptAdultInvite,
     deletedAccountMessage,
     clearDeletedAccountMessage,
   } = useAuth();
@@ -88,6 +91,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showChildModal, setShowChildModal] = useState(false);
@@ -160,6 +164,23 @@ export default function LoginScreen() {
     }
   };
 
+  const handleAcceptInvite = async () => {
+    if (!inviteCode.trim() || !email.trim() || !password.trim()) return;
+    setError("");
+    setBusy(true);
+    try {
+      await acceptAdultInvite(inviteCode.trim(), email.trim(), password);
+    } catch (e: unknown) {
+      setError(
+        e instanceof ApiError && e.status === 401
+          ? "Código de convite inválido ou já utilizado."
+          : authErrorMessage(e, "Erro ao aceitar convite")
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleChildLogin = async (code: string) => {
     setBusy(true);
     try {
@@ -198,7 +219,21 @@ export default function LoginScreen() {
             onChangePassword={setPassword}
             onSubmit={() => void handleLogin()}
             onCreateAccount={() => switchView("register")}
+            onAcceptInvite={() => switchView("invite")}
             onChildLogin={() => setShowChildModal(true)}
+          />
+        ) : view === "invite" ? (
+          <InviteForm
+            code={inviteCode}
+            email={email}
+            password={password}
+            error={error}
+            busy={busy}
+            onChangeCode={setInviteCode}
+            onChangeEmail={setEmail}
+            onChangePassword={setPassword}
+            onSubmit={() => void handleAcceptInvite()}
+            onBack={() => switchView("login")}
           />
         ) : (
           <RegisterForm
