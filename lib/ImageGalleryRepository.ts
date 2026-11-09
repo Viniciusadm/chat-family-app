@@ -1,4 +1,5 @@
 import * as MediaLibrary from "expo-media-library";
+import { Platform } from "react-native";
 
 const ALBUM_NAME = "ChatFamily";
 const inFlightSaves = new Set<string>();
@@ -34,8 +35,19 @@ export const ImageGalleryRepository = {
       const granted = await ensurePermission();
       if (!granted) return;
 
-      const asset = await MediaLibrary.createAssetAsync(fileUri);
       const album = await MediaLibrary.getAlbumAsync(ALBUM_NAME);
+      if (Platform.OS === "android") {
+        // Creating directly in the destination avoids moving an existing asset,
+        // which triggers Android's per-photo modification consent dialog.
+        if (album) {
+          await MediaLibrary.createAssetAsync(fileUri, album);
+        } else {
+          await MediaLibrary.createAlbumAsync(ALBUM_NAME, undefined, true, fileUri);
+        }
+        return;
+      }
+
+      const asset = await MediaLibrary.createAssetAsync(fileUri);
       if (album) {
         await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
       } else {
