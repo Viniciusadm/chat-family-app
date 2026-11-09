@@ -286,11 +286,15 @@ export const ChatRepository = {
   },
 
   async markRead(chatId: string, memberId: string, readAtMs: number, currentMemberId: string) {
-    await withExclusiveWrite(async (tx) => {
+    const changed = await withExclusiveWrite(async (tx) => {
       const row = await tx.getFirstAsync<ChatRow>("SELECT * FROM chats WHERE id = ?", [chatId]);
-      if (!row) return;
+      if (!row) return false;
       const readUpTo = parseReadUpTo(row.read_up_to) ?? {};
-      const targetMs = Math.max(readAtMs, readUpTo[memberId]?.toMillis() ?? 0);
+      const existingMs = readUpTo[memberId]?.toMillis() ?? 0;
+      if (existingMs >= readAtMs && (memberId !== currentMemberId || row.unread_count === 0)) {
+        return false;
+      }
+      const targetMs = Math.max(readAtMs, existingMs);
       readUpTo[memberId] = timestampFromMillis(targetMs);
       let unreadCount = row.unread_count;
       if (memberId === currentMemberId) {
@@ -302,11 +306,14 @@ export const ChatRepository = {
         );
         unreadCount = unread?.count ?? 0;
       }
+      const serialized = serializeReadUpTo(readUpTo);
+      if (serialized === row.read_up_to && unreadCount === row.unread_count) return false;
       await tx.runAsync("UPDATE chats SET read_up_to = ?, unread_count = ? WHERE id = ?", [
-        serializeReadUpTo(readUpTo), unreadCount, chatId,
+        serialized, unreadCount, chatId,
       ]);
+      return true;
     });
-    emit();
+    if (changed) emit();
   },
 
   async updateLastMessage(

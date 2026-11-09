@@ -71,3 +71,30 @@ it("does not clear our unread badge when someone else reads", async () => {
   await ChatRepository.markRead("chat", "other", Date.parse("2026-11-08T10:00:00.000Z"), "me");
   expect(db.prepare("SELECT unread_count FROM chats").get().unread_count).toBe(3);
 });
+
+it("does not write or notify subscribers for duplicate read events", async () => {
+  const listener = jest.fn();
+  const unsubscribe = ChatRepository.subscribe(listener);
+  try {
+    const time = Date.parse("2026-11-08T10:00:00.000Z");
+    await ChatRepository.markRead("chat", "me", time, "me");
+    const changes = db.prepare("SELECT total_changes() AS total").get().total;
+    await ChatRepository.markRead("chat", "me", time, "me");
+    expect(db.prepare("SELECT total_changes() AS total").get().total).toBe(changes);
+    expect(listener).toHaveBeenCalledTimes(1);
+  } finally {
+    unsubscribe();
+  }
+});
+
+it("persists both parts of a sync cursor without losing server microseconds", async () => {
+  db.exec(`CREATE TABLE chat_message_sync (
+    chat_id TEXT PRIMARY KEY, history_synced_at TEXT, newest_message_at TEXT,
+    changed_at TEXT, changed_message_id TEXT
+  )`);
+  const changedAt = "2026-11-09T10:00:00.123456Z";
+  await MessageRepository.saveMessageSyncState("chat", new Date(changedAt), changedAt, "last-message");
+  const state = await MessageRepository.getMessageSyncState("chat");
+  expect(state.changedAt).toBe(changedAt);
+  expect(state.changedMessageId).toBe("last-message");
+});

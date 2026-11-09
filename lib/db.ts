@@ -189,9 +189,14 @@ async function migrateToVersion2(db: SQLite.SQLiteDatabase) {
   `);
 }
 
+async function migrateToVersion3(db: SQLite.SQLiteDatabase) {
+  await ensureColumn(db, "chat_message_sync", "changed_message_id", "TEXT");
+}
+
 const MIGRATIONS: ((db: SQLite.SQLiteDatabase) => Promise<void>)[] = [
   migrateToVersion1,
   migrateToVersion2,
+  migrateToVersion3,
 ];
 
 async function migrate(db: SQLite.SQLiteDatabase) {

@@ -1,4 +1,4 @@
-import { decryptIncomingMessage } from "@/lib/encryptedMessages";
+import { decryptIncomingMessage, decryptIncomingMessages } from "@/lib/encryptedMessages";
 import { ChatRepository } from "@/lib/ChatRepository";
 import { getDatabase, withExclusiveWrite } from "@/lib/db";
 import { rowToMessage, type MessageRow } from "@/lib/messageRows";
@@ -15,6 +15,7 @@ type MessageSyncRow = {
   history_synced_at: string | null;
   newest_message_at: string | null;
   changed_at: string | null;
+  changed_message_id: string | null;
 };
 
 export type LocalMessageInput = {
@@ -120,7 +121,8 @@ function inputParams(message: LocalMessageInput) {
 async function remoteMessageToInput(
   conversationId: string,
   id: string,
-  data: MessageDto
+  data: MessageDto,
+  decryptedBody?: string | null
 ): Promise<LocalMessageInput> {
   const isAudio = data.type === "audio";
   const isImage = data.type === "image";
@@ -142,7 +144,9 @@ async function remoteMessageToInput(
     body = null;
     type = "image";
   } else if (data.ciphertext && data.iv) {
-    body = await decryptIncomingMessage(conversationId, data);
+    body = decryptedBody === undefined
+      ? await decryptIncomingMessage(conversationId, data)
+      : decryptedBody;
     type = "text";
   } else {
     body = null;
@@ -564,11 +568,10 @@ export const MessageRepository = {
       [conversationId]
     );
     const decrypted: { id: string; body: string }[] = [];
-    for (const row of rows) {
-      const body = await decryptIncomingMessage(conversationId, {
-        ciphertext: row.ciphertext,
-        iv: row.iv,
-      });
+    const bodies = await decryptIncomingMessages(conversationId, rows);
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const body = bodies[index];
       if (body != null) decrypted.push({ id: row.id, body });
     }
     if (decrypted.length === 0) return 0;
@@ -698,8 +701,10 @@ export const MessageRepository = {
     options: { notify?: boolean } = {}
   ) {
     const inputs: LocalMessageInput[] = [];
-    for (const data of rows) {
-      inputs.push(await remoteMessageToInput(conversationId, data.id, data));
+    const bodies = await decryptIncomingMessages(conversationId, rows);
+    for (let index = 0; index < rows.length; index += 1) {
+      const data = rows[index];
+      inputs.push(await remoteMessageToInput(conversationId, data.id, data, bodies[index]));
     }
     await this.insertLocalMessages(conversationId, inputs, options);
   },
@@ -923,10 +928,11 @@ export const MessageRepository = {
     historySyncedAt: Date | null;
     newestMessageAt: Date | null;
     changedAt: string | null;
+    changedMessageId?: string | null;
   }> {
     const db = await getDatabase();
     const row = await db.getFirstAsync<MessageSyncRow>(
-      `SELECT history_synced_at, newest_message_at, changed_at
+      `SELECT history_synced_at, newest_message_at, changed_at, changed_message_id
        FROM chat_message_sync
        WHERE chat_id = ?`,
       [conversationId]
@@ -942,13 +948,15 @@ export const MessageRepository = {
       // Kept as the raw server string: parsing it to a Date would drop the microseconds
       // and make every poll return the boundary rows again.
       changedAt: row?.changed_at ?? null,
+      changedMessageId: row?.changed_message_id ?? null,
     };
   },
 
   async saveMessageSyncState(
     conversationId: string,
     newestMessageAt: Date | null,
-    changedAt?: string | null
+    changedAt?: string | null,
+    changedMessageId?: string | null
   ) {
     await withExclusiveWrite(async (tx) => {
       await tx.runAsync(
@@ -956,8 +964,9 @@ export const MessageRepository = {
           chat_id,
           history_synced_at,
           newest_message_at,
-          changed_at
-        ) VALUES (?, ?, ?, ?)
+          changed_at,
+          changed_message_id
+        ) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(chat_id) DO UPDATE SET
           history_synced_at = excluded.history_synced_at,
           newest_message_at = COALESCE(
@@ -967,12 +976,17 @@ export const MessageRepository = {
           changed_at = COALESCE(
             excluded.changed_at,
             chat_message_sync.changed_at
-          )`,
+          ),
+          changed_message_id = CASE
+            WHEN excluded.changed_at IS NOT NULL THEN excluded.changed_message_id
+            ELSE chat_message_sync.changed_message_id
+          END`,
         [
           conversationId,
           new Date().toISOString(),
           newestMessageAt?.toISOString() ?? null,
           changedAt ?? null,
+          changedMessageId ?? null,
         ]
       );
     });

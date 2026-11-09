@@ -64,46 +64,42 @@ export async function applyRemoteMessages(chatId: string, rows: MessageDto[]) {
 /// created_at, so the history cursor can never see them again.
 export async function syncChangedMessages(chatId: string): Promise<number> {
   const syncState = await MessageRepository.getMessageSyncState(chatId);
-  let cursor =
-    syncState.changedAt ?? syncState.newestMessageAt?.toISOString() ?? null;
-  if (!cursor) return 0;
+  let cursor = syncState.changedAt ?? "1970-01-01T00:00:00.000Z";
+  let cursorId = syncState.changedMessageId ?? undefined;
+  let newestMessageAt = syncState.newestMessageAt;
 
   let applied = 0;
   while (true) {
     const rows = await listMessages(chatId, {
       changedAfter: cursor,
+      ...(cursorId ? { changedAfterId: cursorId } : {}),
       limit: MESSAGE_PAGE_SIZE,
     });
     if (rows.length === 0) break;
 
-    let newestRaw: string | null = null;
-    let newestMs = Number.NEGATIVE_INFINITY;
     for (const row of rows) {
-      if (!row.updated_at) continue;
-      const ms = new Date(row.updated_at).getTime();
-      if (ms > newestMs) {
-        newestMs = ms;
-        newestRaw = row.updated_at;
+      const createdAt = row.created_at ? new Date(row.created_at) : null;
+      if (createdAt && (!newestMessageAt || createdAt > newestMessageAt)) {
+        newestMessageAt = createdAt;
       }
     }
 
     await applyRemoteMessages(chatId, rows);
     applied += rows.length;
+    MessageRepository.emit(chatId);
 
-    // The cursor has to advance or the server keeps returning the same page.
-    if (!newestRaw || newestRaw === cursor) break;
-    cursor = newestRaw;
+    // The API orders by updated_at. Keep its raw final value so microseconds
+    // survive pagination, including changes within the same millisecond.
+    const nextCursor = rows[rows.length - 1].updated_at;
+    const nextId = rows[rows.length - 1].id;
+    if (!nextCursor || (nextCursor === cursor && nextId === cursorId)) break;
+    cursor = nextCursor;
+    cursorId = nextId;
     if (rows.length < MESSAGE_PAGE_SIZE) break;
   }
 
-  await MessageRepository.saveMessageSyncState(
-    chatId,
-    syncState.newestMessageAt,
-    cursor,
-  );
-  if (applied > 0) {
-    MessageRepository.emit(chatId);
-    await ChatRepository.refreshLastMessageFromLocal(chatId);
+  if (applied > 0 || !syncState.historySyncedAt || !syncState.changedAt) {
+    await MessageRepository.saveMessageSyncState(chatId, newestMessageAt, cursor, cursorId);
   }
   return applied;
 }
@@ -136,52 +132,14 @@ export function syncChatHistory(
 
 async function syncChatHistoryOnce(chatId: string, deviceId?: string) {
   try {
-    await repairConversationKeyFromPendingShare(chatId, deviceId);
-    const syncState = await MessageRepository.getMessageSyncState(chatId);
-    let newestMessageAt = syncState.newestMessageAt;
-    // New history must never advance the edit cursor: an older message may have
-    // changed before one of these newly created messages arrived.
-    const changedAt = syncState.changedAt ??
-      syncState.newestMessageAt?.toISOString() ?? "1970-01-01T00:00:00.000Z";
-
-    while (true) {
-      // The cursor has to advance on every page, otherwise the server keeps
-      // returning the same first page and this loop never ends.
-      const cursorBefore = newestMessageAt;
-      const rows = await listMessages(chatId, {
-        after: cursorBefore ? cursorBefore.toISOString() : undefined,
-        limit: MESSAGE_PAGE_SIZE,
-      });
-      if (rows.length === 0) break;
-
-      for (const data of rows) {
-        const createdAt = data.created_at ? new Date(data.created_at) : null;
-        if (createdAt && (!newestMessageAt || createdAt > newestMessageAt)) {
-          newestMessageAt = createdAt;
-        }
-      }
-      await applyRemoteMessages(chatId, rows);
-
-      MessageRepository.emit(chatId);
-
-      if (rows.length < MESSAGE_PAGE_SIZE) break;
-      if (
-        newestMessageAt &&
-        cursorBefore &&
-        newestMessageAt.getTime() === cursorBefore.getTime()
-      ) {
-        break;
-      }
+    const repairedBefore = await repairConversationKeyFromPendingShare(chatId, deviceId);
+    // updated_at includes creations as well as edits/deletes. A separate pass
+    // over created_at downloads, decrypts and writes every new message twice.
+    const applied = await syncChangedMessages(chatId);
+    const repairedAfter = await repairConversationKeyFromPendingShare(chatId, deviceId);
+    if (applied > 0 || repairedBefore || repairedAfter) {
+      await ChatRepository.refreshLastMessageFromLocal(chatId);
     }
-
-    await repairConversationKeyFromPendingShare(chatId, deviceId);
-    await MessageRepository.saveMessageSyncState(
-      chatId,
-      newestMessageAt,
-      changedAt,
-    );
-    await ChatRepository.refreshLastMessageFromLocal(chatId);
-    await syncChangedMessages(chatId);
   } catch {
     // Offline or permission errors are retried by the next listener/sync pass.
   }

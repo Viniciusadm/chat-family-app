@@ -31,6 +31,7 @@ export function useMessageSearch() {
   });
   const [rawQuery, setRawQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const searchEnabled = rawQuery.trim().length >= MIN_QUERY_LENGTH;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -44,12 +45,13 @@ export function useMessageSearch() {
   }, [rawQuery]);
 
   useEffect(() => {
-    if (!tenantId || !memberId) {
+    if (!tenantId || !memberId || !searchEnabled) {
       setState({ index: [], loading: false, error: null });
       return;
     }
 
     let cancelled = false;
+    setState({ index: [], loading: true, error: null });
     const load = async () => {
       try {
         const data = await MessageRepository.getAllTextMessages(tenantId, memberId);
@@ -78,7 +80,7 @@ export function useMessageSearch() {
       scheduleLoad.cancel();
       unsubscribe();
     };
-  }, [memberId, tenantId]);
+  }, [memberId, tenantId, searchEnabled]);
 
   const trimmedQuery = debouncedQuery.trim();
   const isSearching = trimmedQuery.length >= MIN_QUERY_LENGTH;

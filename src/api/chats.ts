@@ -101,6 +101,7 @@ export function listMessages(
     after?: string;
     before?: string;
     changedAfter?: string;
+    changedAfterId?: string;
     limit?: number;
   } = {}
 ) {
@@ -110,6 +111,7 @@ export function listMessages(
   // Edits and soft deletes never move created_at, so they are only visible through this
   // cursor over updated_at.
   if (params.changedAfter) qs.set("changed_after", params.changedAfter);
+  if (params.changedAfterId) qs.set("changed_after_id", params.changedAfterId);
   if (params.limit) qs.set("limit", String(params.limit));
   const suffix = qs.toString() ? `?${qs}` : "";
   return apiFetch<MessageDto[]>(`/chats/${chatId}/messages${suffix}`);
