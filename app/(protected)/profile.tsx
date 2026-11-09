@@ -22,9 +22,9 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
+import { showAlert } from "@/components/AppAlert";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   StyleSheet,
@@ -186,7 +186,7 @@ export default function ProfileScreen() {
     if (saving || !canMutatePhoto) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert(
+      showAlert(
         "Permissão necessária",
         "Permita acesso às fotos para escolher uma imagem."
       );
@@ -204,7 +204,7 @@ export default function ProfileScreen() {
     const asset = result.assets[0];
     if (!asset) return;
     if (asset.width !== asset.height) {
-      Alert.alert(
+      showAlert(
         "Foto inválida",
         "A foto precisa ser cortada em formato quadrado antes do envio."
       );
@@ -220,7 +220,7 @@ export default function ProfileScreen() {
       });
       await setCurrentUserPhoto(uploaded.url, uploaded.path ?? null);
     } catch (e) {
-      Alert.alert(
+      showAlert(
         "Erro ao salvar foto",
         e instanceof Error ? e.message : "Não foi possível salvar a foto."
       );
@@ -236,7 +236,7 @@ export default function ProfileScreen() {
       await deleteProfilePhoto();
       await setCurrentUserPhoto(null, null);
     } catch (e) {
-      Alert.alert(
+      showAlert(
         "Erro ao remover foto",
         e instanceof Error ? e.message : "Não foi possível remover a foto."
       );
@@ -247,7 +247,7 @@ export default function ProfileScreen() {
 
   const confirmLogout = () => {
     if (loggingOut) return;
-    Alert.alert("Sair", "Deseja sair da sua conta neste aparelho?", [
+    showAlert("Sair", "Deseja sair da sua conta neste aparelho?", [
       { text: "Cancelar", style: "cancel" },
       {
         text: "Sair",

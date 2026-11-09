@@ -19,8 +19,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { showAlert } from "@/components/AppAlert";
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -98,7 +98,7 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (!deletedAccountMessage) return;
-    Alert.alert("Conta removida", deletedAccountMessage);
+    showAlert("Conta removida", deletedAccountMessage);
     clearDeletedAccountMessage();
   }, [clearDeletedAccountMessage, deletedAccountMessage]);
 

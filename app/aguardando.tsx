@@ -13,9 +13,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { showAlert } from "@/components/AppAlert";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -103,7 +103,7 @@ export default function AguardandoScreen() {
 
   const confirmSwitchAccount = () => {
     if (loggingOut) return;
-    Alert.alert(
+    showAlert(
       "Usar outra conta",
       "Deseja sair e entrar com outra conta ou código?",
       [

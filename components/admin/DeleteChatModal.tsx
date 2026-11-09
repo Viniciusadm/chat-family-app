@@ -1,6 +1,6 @@
 import type { Chat } from "@/types/chat";
 import { useState } from "react";
-import { Alert } from "react-native";
+import { showAlert } from "@/components/AppAlert";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { errorMessage } from "./errorMessage";
 
@@ -31,7 +31,7 @@ export function DeleteChatModal({
       await deleteChat(chat.id);
       onClose();
     } catch (e) {
-      Alert.alert(
+      showAlert(
         "Erro ao apagar conversa",
         errorMessage(e, "Não foi possível apagar a conversa.")
       );

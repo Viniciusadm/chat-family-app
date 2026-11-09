@@ -21,7 +21,8 @@ const DEBOUNCE_MS = 200;
 const RESULT_LIMIT = 50;
 const INDEX_RELOAD_DELAY_MS = 1_000;
 
-export function useMessageSearch() {
+export function useMessageSearch(options: { chatId?: string } = {}) {
+  const chatIdFilter = options.chatId ?? null;
   const { tenantId, currentUser } = useAuth();
   const memberId = currentUser?.id ?? null;
   const [state, setState] = useState<IndexState>({
@@ -56,10 +57,14 @@ export function useMessageSearch() {
       try {
         const data = await MessageRepository.getAllTextMessages(tenantId, memberId);
         if (cancelled) return;
-        const index = data.map((message) => ({
-          ...message,
-          normalizedContent: normalize(message.content),
-        }));
+        const index = data
+          .filter(
+            (message) => !chatIdFilter || message.chatId === chatIdFilter
+          )
+          .map((message) => ({
+            ...message,
+            normalizedContent: normalize(message.content),
+          }));
         setState({ index, loading: false, error: null });
       } catch (err) {
         if (cancelled) return;
@@ -80,7 +85,7 @@ export function useMessageSearch() {
       scheduleLoad.cancel();
       unsubscribe();
     };
-  }, [memberId, tenantId, searchEnabled]);
+  }, [chatIdFilter, memberId, tenantId, searchEnabled]);
 
   const trimmedQuery = debouncedQuery.trim();
   const isSearching = trimmedQuery.length >= MIN_QUERY_LENGTH;

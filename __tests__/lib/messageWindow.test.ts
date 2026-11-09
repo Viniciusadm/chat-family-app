@@ -21,6 +21,7 @@ jest.mock("@/lib/MessageRepository", () => ({
     getLocalMessages: jest.fn(),
     hasLocalMessagesBefore: async () => false,
     getOlderWindowStart: async () => null,
+    getClearMark: async () => null,
     subscribe: jest.fn(),
   },
 }));

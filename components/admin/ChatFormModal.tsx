@@ -6,9 +6,9 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
+import { showAlert } from "@/components/AppAlert";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -114,7 +114,7 @@ export function ChatFormModal({
       }
       onClose();
     } catch (e) {
-      Alert.alert(config.errorTitle, errorMessage(e, config.errorFallback));
+      showAlert(config.errorTitle, errorMessage(e, config.errorFallback));
     } finally {
       setSaving(false);
     }
@@ -125,7 +125,7 @@ export function ChatFormModal({
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert(
+        showAlert(
           "Permissão necessária",
           "Permita acesso às fotos para escolher uma imagem."
         );
@@ -147,7 +147,7 @@ export function ChatFormModal({
       );
       await onUpdatePhoto(compressed.uri);
     } catch (e) {
-      Alert.alert("Erro na foto", errorMessage(e, "Erro ao enviar foto."));
+      showAlert("Erro na foto", errorMessage(e, "Erro ao enviar foto."));
     } finally {
       setPhotoBusy(false);
     }
@@ -159,7 +159,7 @@ export function ChatFormModal({
     try {
       await onRemovePhoto();
     } catch (e) {
-      Alert.alert("Erro na foto", errorMessage(e, "Erro ao remover foto."));
+      showAlert("Erro na foto", errorMessage(e, "Erro ao remover foto."));
     } finally {
       setPhotoBusy(false);
     }

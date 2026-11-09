@@ -26,6 +26,7 @@ import { AudioBubble } from "./AudioBubble";
 import { ImageBubble } from "./ImageBubble";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { QuotedReply } from "./QuotedReply";
+import { getMessageImageUri } from "@/lib/messageImageUri";
 
 interface ChatBubbleProps {
   message: Message;
@@ -51,7 +52,7 @@ interface ChatBubbleProps {
   onDelete?: (message: Message) => void;
   canModify?: boolean;
   onQuotedReplyPress?: (replyToMessageId: string) => void;
-  onOpenImage?: (uri: string) => void;
+  onOpenImage?: (messageId: string) => void;
   onRetryImage?: (message: Message) => void;
   onRetryAudio?: (message: Message) => void;
   onRetryText?: (message: Message) => void;
@@ -254,12 +255,7 @@ function ChatBubbleImpl({
   const audioUnavailableOffline =
     message.type === "audio" && !message.audioLocalUri && !isOnline;
   const isImage = message.type === "image";
-  const fullImageUri = isImage
-    ? message.imageLocalUri ??
-      message.imageRemoteUrl ??
-      message.imageUrl ??
-      null
-    : null;
+  const fullImageUri = getMessageImageUri(message);
   const bubbleRef = useRef<View>(null);
   const swipeX = useRef(new Animated.Value(0)).current;
   const panResponder = useMemo(
@@ -454,7 +450,7 @@ function ChatBubbleImpl({
               message={message}
               isSelf={isSelf}
               onPress={() => {
-                if (fullImageUri) onOpenImage?.(fullImageUri);
+                if (fullImageUri) onOpenImage?.(message.id);
               }}
               onLongPress={handleLongPress}
               onRetry={

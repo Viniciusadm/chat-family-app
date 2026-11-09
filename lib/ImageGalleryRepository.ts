@@ -28,12 +28,12 @@ export const ImageGalleryRepository = {
   }: {
     messageId: string;
     fileUri: string;
-  }): Promise<void> {
-    if (inFlightSaves.has(messageId)) return;
+  }): Promise<boolean> {
+    if (inFlightSaves.has(messageId)) return false;
     inFlightSaves.add(messageId);
     try {
       const granted = await ensurePermission();
-      if (!granted) return;
+      if (!granted) return false;
 
       const album = await MediaLibrary.getAlbumAsync(ALBUM_NAME);
       if (Platform.OS === "android") {
@@ -44,7 +44,7 @@ export const ImageGalleryRepository = {
         } else {
           await MediaLibrary.createAlbumAsync(ALBUM_NAME, undefined, true, fileUri);
         }
-        return;
+        return true;
       }
 
       const asset = await MediaLibrary.createAssetAsync(fileUri);
@@ -53,8 +53,10 @@ export const ImageGalleryRepository = {
       } else {
         await MediaLibrary.createAlbumAsync(ALBUM_NAME, asset, false);
       }
+      return true;
     } catch {
       // Permissão negada ou erro — não quebra envio.
+      return false;
     } finally {
       inFlightSaves.delete(messageId);
     }

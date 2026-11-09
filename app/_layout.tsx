@@ -1,5 +1,6 @@
 import "react-native-get-random-values";
 
+import { AlertHost } from "@/components/AppAlert";
 import { NotificationNavigation } from "@/components/NotificationNavigation";
 import { PermissionsGate } from "@/components/PermissionsGate";
 import { PushTokenSync } from "@/components/PushTokenSync";
@@ -68,6 +69,7 @@ export default function RootLayout() {
               <PushTokenSync />
               <ThemedChrome />
               <RootLayoutNav />
+              <AlertHost />
             </AuthProvider>
           </ToastProvider>
         </KeyboardProvider>

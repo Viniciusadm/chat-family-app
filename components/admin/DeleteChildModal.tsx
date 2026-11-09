@@ -3,7 +3,8 @@ import { useThemedStyles } from "@/theme/useThemedStyles";
 import type { AppMember } from "@/types/chat";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
-import { Alert, Pressable, Text } from "react-native";
+import { showAlert } from "@/components/AppAlert";
+import { Pressable, Text } from "react-native";
 import { createAdminModalStyles } from "./adminStyles";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 
@@ -45,7 +46,7 @@ export function DeleteChildModal({
       onClose();
       setDeleteMessages(false);
     } catch (e) {
-      Alert.alert(
+      showAlert(
         "Erro ao apagar",
         e instanceof Error ? e.message : "Não foi possível apagar a criança."
       );

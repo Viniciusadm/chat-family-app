@@ -17,6 +17,7 @@ type ChatRow = {
   last_message_type: string | null;
   last_message_at: string | null;
   read_up_to: string | null;
+  cleared_at?: string | null;
 };
 
 type Listener = () => void;
@@ -81,7 +82,11 @@ function rowToChat(row: ChatRow): Chat {
     readUpTo: parseReadUpTo(row.read_up_to),
   };
 
-  if (row.last_message_at) {
+  const clearedByMark =
+    row.cleared_at != null &&
+    row.last_message_at != null &&
+    row.last_message_at <= row.cleared_at;
+  if (row.last_message_at && !clearedByMark) {
     chat.lastMessage = {
       text: row.last_message_text,
       type:
@@ -168,6 +173,7 @@ async function deleteChatRows(tx: SQLiteDatabase, chatId: string) {
   );
   await tx.runAsync("DELETE FROM messages WHERE conversation_id = ?", [chatId]);
   await tx.runAsync("DELETE FROM chat_message_sync WHERE chat_id = ?", [chatId]);
+  await tx.runAsync("DELETE FROM chat_clear_marks WHERE chat_id = ?", [chatId]);
   await tx.runAsync("DELETE FROM key_share_recipients WHERE chat_id = ?", [chatId]);
 }
 
@@ -182,10 +188,11 @@ export const ChatRepository = {
   async getLocalChats(tenantId: string): Promise<Chat[]> {
     const db = await getDatabase();
     const rows = await db.getAllAsync<ChatRow>(
-      `SELECT *
-       FROM chats
-       WHERE tenant_id = ?
-       ORDER BY COALESCE(last_message_at, updated_at, '') DESC, name ASC`,
+      `SELECT c.*, marks.cleared_at
+       FROM chats c
+       LEFT JOIN chat_clear_marks marks ON marks.chat_id = c.id
+       WHERE c.tenant_id = ?
+       ORDER BY COALESCE(c.last_message_at, c.updated_at, '') DESC, c.name ASC`,
       [tenantId]
     );
 
@@ -195,9 +202,10 @@ export const ChatRepository = {
   async getLocalChat(chatId: string): Promise<Chat | null> {
     const db = await getDatabase();
     const row = await db.getFirstAsync<ChatRow>(
-      `SELECT *
-       FROM chats
-       WHERE id = ?`,
+      `SELECT c.*, marks.cleared_at
+       FROM chats c
+       LEFT JOIN chat_clear_marks marks ON marks.chat_id = c.id
+       WHERE c.id = ?`,
       [chatId]
     );
 

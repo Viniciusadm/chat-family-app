@@ -35,6 +35,8 @@ export type SendableAudio =
   | Uint8Array
   | ArrayBuffer;
 
+type ImageSource = { uri: string; width: number; height: number };
+
 export const EDIT_DELETE_WINDOW_MS = 60 * 60 * 1000;
 
 type PendingCreateClaim = "claimed" | "in_flight" | "already_sent";
@@ -149,11 +151,12 @@ export function useSendMessage(chatId: string) {
     }
   };
 
-  const sendImage = async (
-    source: { uri: string; width: number; height: number },
-    options?: { replyTo?: MessageReplySnapshot | null }
-  ) => {
-    if (!currentUser || !tenantId) return;
+  const createImageMessage = async (
+    targetChatId: string,
+    source: ImageSource,
+    options: { replyTo?: MessageReplySnapshot | null; saveToGallery: boolean }
+  ): Promise<boolean> => {
+    if (!currentUser || !tenantId) return false;
     setIsSending(true);
     const messageId = randomUuid();
     const createdAt = new Date();
@@ -166,14 +169,14 @@ export function useSendMessage(chatId: string) {
       );
 
       const localUri = await ImageCacheRepository.copyLocalSource({
-        chatId,
+        chatId: targetChatId,
         messageId,
         sourceUri: processed.uri,
       });
 
       await MessageRepository.insertLocalMessage({
         id: messageId,
-        conversationId: chatId,
+        conversationId: targetChatId,
         senderId: currentUser.id,
         body: null,
         type: "image",
@@ -184,31 +187,46 @@ export function useSendMessage(chatId: string) {
         imageHeight: processed.height,
         imageFileSize: processed.fileSize,
         imagePendingSourceUri: localUri ?? processed.uri,
-        replyTo: options?.replyTo ?? null,
+        replyTo: options.replyTo ?? null,
       });
 
-      await ChatRepository.updateLastMessage(chatId, {
+      await ChatRepository.updateLastMessage(targetChatId, {
         text: null,
         type: "image",
         timestamp: createdAt,
       });
 
-      if (localUri) {
+      if (localUri && options.saveToGallery) {
         void ImageGalleryRepository.saveToGallery({
           messageId,
           fileUri: localUri,
         });
       }
 
-      if (!isOnline) return;
-
-      await uploadImageMessage(messageId, currentUser, tenantId, processed.uri);
+      if (isOnline) {
+        await uploadImageMessage(messageId, currentUser, tenantId, processed.uri);
+      }
+      return true;
     } catch {
       await MessageRepository.updateStatus(messageId, "failed").catch(() => {});
+      return false;
     } finally {
       setIsSending(false);
     }
   };
+
+  const sendImage = async (
+    source: ImageSource,
+    options?: { replyTo?: MessageReplySnapshot | null }
+  ) => {
+    await createImageMessage(chatId, source, {
+      replyTo: options?.replyTo,
+      saveToGallery: true,
+    });
+  };
+
+  const forwardImage = (targetChatId: string, source: ImageSource) =>
+    createImageMessage(targetChatId, source, { saveToGallery: false });
 
   const retryAudioMessage = async (message: Message) => {
     if (!currentUser || !tenantId || !isOnline) return;
@@ -351,6 +369,7 @@ export function useSendMessage(chatId: string) {
     sendText,
     sendAudio,
     sendImage,
+    forwardImage,
     retryAudioMessage,
     retryImageMessage,
     retryTextMessage,

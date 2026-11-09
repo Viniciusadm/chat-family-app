@@ -24,3 +24,20 @@ export function formatMessageTime(date: Date, now: Date = new Date()): string {
     year: date.getFullYear() === now.getFullYear() ? undefined : "2-digit",
   });
 }
+
+export function formatViewerTimestamp(
+  date: Date,
+  now: Date = new Date()
+): string {
+  const time = formatClockTime(date);
+  if (isSameDay(date, now)) return `Hoje ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameDay(date, yesterday)) return `Ontem ${time}`;
+  const day = date.toLocaleDateString("pt-BR", {
+    day: "numeric",
+    month: "long",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
+  return `${day} ${time}`;
+}

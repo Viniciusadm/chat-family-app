@@ -22,6 +22,8 @@ interface AppHeaderProps {
   rightIcon?: Ion;
   onRightPress?: () => void;
   rightAccessibilityLabel?: string;
+  onTitlePress?: () => void;
+  titleAccessibilityLabel?: string;
   rightActions?: {
     key: string;
     icon?: Ion;
@@ -70,6 +72,13 @@ const createStyles = (t: ThemeTokens) =>
     pressed: {
       opacity: 0.7,
     },
+    titleButton: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      alignSelf: "stretch",
+    },
     titleWrap: {
       flex: 1,
       alignSelf: "stretch",
@@ -96,6 +105,8 @@ export function AppHeader({
   onRightPress,
   rightAccessibilityLabel,
   rightActions,
+  onTitlePress,
+  titleAccessibilityLabel,
 }: AppHeaderProps) {
   const { theme } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -111,6 +122,21 @@ export function AppHeader({
           },
         ]
       : []);
+
+  const titleText = (
+    <View style={styles.titleWrap}>
+      <Text
+        style={[
+          styles.title,
+          onBack ? styles.titleWithBack : styles.titleLarge,
+        ]}
+        numberOfLines={1}
+        accessibilityRole="header"
+      >
+        {title}
+      </Text>
+    </View>
+  );
 
   return (
     <SafeAreaView edges={["top"]} style={styles.container}>
@@ -132,20 +158,25 @@ export function AppHeader({
           </Pressable>
         ) : null}
 
-        {leading ? <View style={styles.leading}>{leading}</View> : null}
-
-        <View style={styles.titleWrap}>
-          <Text
-            style={[
-              styles.title,
-              onBack ? styles.titleWithBack : styles.titleLarge,
+        {onTitlePress ? (
+          <Pressable
+            onPress={onTitlePress}
+            style={({ pressed }) => [
+              styles.titleButton,
+              pressed && styles.pressed,
             ]}
-            numberOfLines={1}
-            accessibilityRole="header"
+            accessibilityRole="button"
+            accessibilityLabel={titleAccessibilityLabel ?? title}
           >
-            {title}
-          </Text>
-        </View>
+            {leading ? <View style={styles.leading}>{leading}</View> : null}
+            {titleText}
+          </Pressable>
+        ) : (
+          <>
+            {leading ? <View style={styles.leading}>{leading}</View> : null}
+            {titleText}
+          </>
+        )}
 
         {actions.length > 0 ? (
           <View style={styles.actions}>

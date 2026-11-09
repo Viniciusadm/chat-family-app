@@ -8,7 +8,8 @@ import {
 } from "@/theme/tokens";
 import type { Device } from "@/types/chat";
 import { Ionicons } from "@expo/vector-icons";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { showAlert } from "@/components/AppAlert";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { createAdminCardStyles } from "./adminStyles";
 import { SectionTitle } from "./SectionTitle";
 
@@ -66,7 +67,7 @@ export function PendingDevicesSection({
 
   const confirmReject = (deviceId: string, ownerName?: string) => {
     if (deviceActionId) return;
-    Alert.alert(
+    showAlert(
       "Recusar dispositivo?",
       ownerName
         ? `O dispositivo de ${ownerName} não poderá acessar as conversas.`

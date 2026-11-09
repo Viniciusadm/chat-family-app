@@ -1,6 +1,11 @@
 import { ChatBubble } from "@/components/ChatBubble";
 import { ChatInput, type ChatInputHandle } from "@/components/ChatInput";
 import { ImageViewer } from "@/components/ImageViewer";
+import { MuteChildSheet } from "@/components/MuteChildSheet";
+import {
+  OverflowMenu,
+  type OverflowMenuItem,
+} from "@/components/OverflowMenu";
 import { ReactionsDialog } from "@/components/ReactionsDialog";
 import { useToast } from "@/components/Toast";
 import { ChatHeader } from "@/components/chat/ChatHeader";
@@ -11,6 +16,8 @@ import {
 } from "@/components/chat/MessageActionsMenu";
 import { useAuth } from "@/context/AuthContext";
 import { useChatReadReceipts } from "@/hooks/useChatReadReceipts";
+import { useChildMutes } from "@/hooks/useChildMutes";
+import { useConversationActions } from "@/hooks/useConversationActions";
 import { useChat } from "@/hooks/useChat";
 import { useChatJump } from "@/hooks/useChatJump";
 import { useConnectivity } from "@/hooks/useConnectivity";
@@ -28,7 +35,19 @@ import {
   isOtherParticipantDeleted,
 } from "@/lib/chatDisplayName";
 import { buildChatListItems, type ChatListItem } from "@/lib/chatListItems";
+import {
+  childSendBlock,
+  findDirectMute,
+  findGeneralMute,
+  formatMuteUntil,
+} from "@/lib/childMutes";
+import { ChatRepository } from "@/lib/ChatRepository";
 import { lightImpact } from "@/lib/haptics";
+import {
+  getImageFileSize,
+  resolveMessageImageFile,
+} from "@/lib/messageImageFile";
+import { selectViewableImages } from "@/lib/messageImageUri";
 import { createReplySnapshot } from "@/lib/messageReply";
 import { useTheme } from "@/theme/ThemeContext";
 import { useThemedStyles } from "@/theme/useThemedStyles";
@@ -44,10 +63,11 @@ import type { Message, MessageReplySnapshot, Reaction } from "@/types/chat";
 import { Ionicons } from "@expo/vector-icons";
 import type { LocalTimestamp } from "@/lib/localTimestamp";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { showAlert } from "@/components/AppAlert";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   FlatList,
   ListRenderItemInfo,
@@ -180,6 +200,26 @@ const createStyles = (t: ThemeTokens) =>
       color: t.mutedForeground,
       textAlign: "center",
     },
+    muteNotice: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      backgroundColor: t.muted,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: t.border,
+    },
+    muteNoticeText: {
+      flex: 1,
+      fontSize: fontSizes.footnote,
+      color: t.foreground,
+    },
+    muteNoticeAction: {
+      fontSize: fontSizes.footnote,
+      fontWeight: fontWeights.semibold,
+      color: t.primary,
+    },
   });
 
 export default function ChatScreen() {
@@ -212,6 +252,92 @@ export default function ChatScreen() {
   );
   const headerTitle = isOtherDeleted ? `${chatTitle} · Excluído` : chatTitle;
   const isGroupChat = chat?.isGroup === true;
+  const { mutes: childMutes, now: muteClock } = useChildMutes();
+  const [muteSheetOpen, setMuteSheetOpen] = useState(false);
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const headerInsets = useSafeAreaInsets();
+  const isChildUser = currentUser?.role === "child";
+  const sendBlock =
+    isChildUser && currentUserId
+      ? childSendBlock(childMutes, currentUserId, chat, muteClock)
+      : null;
+  const isSendBlocked = sendBlock !== null;
+  const directPartnerId =
+    chat && !chat.isGroup
+      ? chat.participants.find((id) => id !== currentUserId)
+      : undefined;
+  const mutableChildId =
+    !isChildUser &&
+    !isOtherDeleted &&
+    directPartnerId &&
+    memberProfiles[directPartnerId]?.role === "child"
+      ? directPartnerId
+      : null;
+  const childMuteForAdult = mutableChildId
+    ? findGeneralMute(childMutes, mutableChildId, muteClock) ??
+      (currentUserId
+        ? findDirectMute(childMutes, mutableChildId, currentUserId, muteClock)
+        : null)
+    : null;
+  const { exportConversation, confirmClear } = useConversationActions(
+    chatId ?? "",
+    chatTitle,
+    memberProfiles
+  );
+
+  const openChatInfo = (open?: "search" | "media") => {
+    if (!chatId) return;
+    router.push({
+      pathname: "/chat/info/[chatId]",
+      params: open ? { chatId, open } : { chatId },
+    });
+  };
+
+  const chatMenuItems: OverflowMenuItem[] = [
+    {
+      key: "info",
+      label: isGroupChat ? "Dados do grupo" : "Dados do contato",
+      icon: isGroupChat ? "people-outline" : "person-circle-outline",
+      onPress: () => openChatInfo(),
+    },
+    {
+      key: "search",
+      label: "Pesquisar",
+      icon: "search-outline",
+      onPress: () => openChatInfo("search"),
+    },
+    {
+      key: "media",
+      label: "Mídias",
+      icon: "images-outline",
+      onPress: () => openChatInfo("media"),
+    },
+    ...(mutableChildId
+      ? [
+          {
+            key: "mute",
+            label: childMuteForAdult ? "Gerenciar silêncio" : "Silenciar criança",
+            icon: childMuteForAdult
+              ? ("volume-mute" as const)
+              : ("volume-mute-outline" as const),
+            onPress: () => setMuteSheetOpen(true),
+          },
+        ]
+      : []),
+    {
+      key: "export",
+      label: "Exportar conversa",
+      icon: "share-outline",
+      onPress: () => void exportConversation(),
+    },
+    {
+      key: "clear",
+      label: "Limpar conversa",
+      icon: "remove-circle-outline",
+      destructive: true,
+      onPress: () => confirmClear(),
+    },
+  ];
   const participants = chat?.participants ?? EMPTY_PARTICIPANTS;
   const { readUpTo } = useChatReadReceipts(
     chatId ?? "",
@@ -228,13 +354,15 @@ export default function ChatScreen() {
     retryTextMessage,
     deleteMessage,
     canModifyMessage,
+    forwardImage,
+    sendText,
   } = useSendMessage(chatId);
 
   const [activeAudioMessageId, setActiveAudioMessageId] = useState<string | null>(null);
   const [audioPlaybackRate, setAudioPlaybackRate] = useState<1 | 1.5 | 2>(1);
   const [replyTo, setReplyTo] = useState<MessageReplySnapshot | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
-  const [viewerImageUri, setViewerImageUri] = useState<string | null>(null);
+  const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
 
   const [reactionTarget, setReactionTarget] = useState<MessageActionsTarget | null>(null);
@@ -259,6 +387,11 @@ export default function ChatScreen() {
     return sequence;
   }, [visibleMessages]);
 
+  const viewerImages = useMemo(
+    () => selectViewableImages(visibleMessages),
+    [visibleMessages]
+  );
+
   const messagesById = useMemo(() => {
     return new Map(visibleMessages.map((message) => [message.id, message]));
   }, [visibleMessages]);
@@ -269,7 +402,7 @@ export default function ChatScreen() {
     setReplyTo(null);
     setEditingMessage(null);
     setImageViewerVisible(false);
-    setViewerImageUri(null);
+    setViewerMessageId(null);
   }, [chatId]);
 
   useEffect(() => {
@@ -362,7 +495,7 @@ export default function ChatScreen() {
 
   const handleDeletePress = useCallback(
     (message: Message) => {
-      Alert.alert(
+      showAlert(
         "Apagar mensagem",
         "Tem certeza que deseja apagar esta mensagem? Essa ação não pode ser desfeita.",
         [
@@ -376,7 +509,7 @@ export default function ChatScreen() {
               }
               void deleteMessage(message).then((deleted) => {
                 if (!deleted) {
-                  Alert.alert(
+                  showAlert(
                     "Não foi possível apagar",
                     "Mensagens só podem ser apagadas até 1 hora depois de enviadas."
                   );
@@ -438,10 +571,46 @@ export default function ChatScreen() {
     [router]
   );
 
-  const openImageViewer = useCallback((uri: string) => {
-    setViewerImageUri(uri);
+  const openImageViewer = useCallback((messageId: string) => {
+    setViewerMessageId(messageId);
     setImageViewerVisible(true);
   }, []);
+
+  const handleViewerReply = useCallback(
+    (message: Message, text: string) => {
+      void sendText(text, {
+        replyTo: createReplySnapshot(message, getSenderName(message)),
+      });
+    },
+    [sendText, getSenderName]
+  );
+
+  const handleViewerReact = useCallback(
+    (messageId: string, emoji: string) => {
+      void reactToMessage(messageId, emoji);
+    },
+    [reactToMessage]
+  );
+
+  const handleForwardImage = useCallback(
+    async (message: Message, targetChatId: string) => {
+      if (isChildUser && currentUserId) {
+        const targetChat = await ChatRepository.getLocalChat(targetChatId);
+        if (childSendBlock(childMutes, currentUserId, targetChat, new Date())) {
+          return false;
+        }
+      }
+      const fileUri = await resolveMessageImageFile(message).catch(() => null);
+      if (!fileUri) return false;
+      const size =
+        message.imageWidth && message.imageHeight
+          ? { width: message.imageWidth, height: message.imageHeight }
+          : await getImageFileSize(fileUri).catch(() => null);
+      if (!size) return false;
+      return forwardImage(targetChatId, { uri: fileUri, ...size });
+    },
+    [childMutes, currentUserId, forwardImage, isChildUser]
+  );
 
   const closeImageViewer = useCallback(() => {
     setImageViewerVisible(false);
@@ -523,9 +692,11 @@ export default function ChatScreen() {
           currentUserId={currentUserId}
           onReactionPress={isOtherDeleted ? undefined : handleReactionPress}
           onReactionChipPress={isOtherDeleted ? undefined : openReactionsDialog}
-          onReply={isOtherDeleted ? undefined : handleReplySelect}
+          onReply={
+            isOtherDeleted || isSendBlocked ? undefined : handleReplySelect
+          }
           onCopy={handleCopyMessageAction}
-          onEdit={isOtherDeleted ? undefined : handleEditPress}
+          onEdit={isOtherDeleted || isSendBlocked ? undefined : handleEditPress}
           onDelete={isOtherDeleted ? undefined : handleDeletePress}
           canModify={
             message.senderId === currentUserId && canModifyMessage(message)
@@ -556,6 +727,7 @@ export default function ChatScreen() {
       isGroupChat,
       isOnline,
       isOtherDeleted,
+      isSendBlocked,
       jumpToMessage,
       memberProfiles,
       openImageViewer,
@@ -576,7 +748,11 @@ export default function ChatScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <KeyboardAvoidingView behavior="padding" style={styles.screen}>
+      <KeyboardAvoidingView
+        behavior="padding"
+        enabled={!imageViewerVisible}
+        style={styles.screen}
+      >
       <ChatHeader
         chat={chat}
         currentUserId={currentUserId}
@@ -584,7 +760,32 @@ export default function ChatScreen() {
         chatTitle={chatTitle}
         headerTitle={headerTitle}
         onBack={() => router.back()}
+        onOpenInfo={() => openChatInfo()}
+        rightActions={[
+          {
+            key: "menu",
+            icon: "ellipsis-vertical",
+            onPress: () => setChatMenuOpen(true),
+            accessibilityLabel: "Mais opções",
+          },
+        ]}
       />
+      {childMuteForAdult ? (
+        <Pressable
+          style={styles.muteNotice}
+          onPress={() => setMuteSheetOpen(true)}
+          accessibilityRole="button"
+        >
+          <Ionicons name="volume-mute" size={16} color={theme.destructive} />
+          <Text style={styles.muteNoticeText}>
+            {childMuteForAdult.scope === "all"
+              ? "Silêncio em todas as conversas"
+              : "Silêncio só para você"}{" "}
+            até {formatMuteUntil(childMuteForAdult.expiresAt, muteClock)}
+          </Text>
+          <Text style={styles.muteNoticeAction}>Gerenciar</Text>
+        </Pressable>
+      ) : null}
       <View style={styles.messagesWrap}>
         {activeDayLabel ? (
           <Animated.View
@@ -690,6 +891,20 @@ export default function ChatScreen() {
             Este usuário foi excluído. As mensagens são apenas leitura.
           </Text>
         </View>
+      ) : sendBlock ? (
+        <View style={styles.readOnlyBanner} accessibilityLiveRegion="polite">
+          <Ionicons
+            name="volume-mute-outline"
+            size={16}
+            color={theme.mutedForeground}
+          />
+          <Text style={styles.readOnlyBannerText}>
+            {sendBlock.scope === "all"
+              ? "Você não pode enviar mensagens"
+              : `${memberProfiles[sendBlock.mutedById]?.name ?? "Um adulto"} pausou suas mensagens`}{" "}
+            até {formatMuteUntil(sendBlock.expiresAt, muteClock)}.
+          </Text>
+        </View>
       ) : (
         <ChatInput
           ref={inputRef}
@@ -703,9 +918,22 @@ export default function ChatScreen() {
       )}
     </KeyboardAvoidingView>
       <ImageViewer
-        uri={viewerImageUri}
         visible={imageViewerVisible}
+        images={viewerImages}
+        initialMessageId={viewerMessageId}
+        currentUserId={currentUserId}
+        readOnly={isOtherDeleted}
+        canReply={!isSendBlocked}
+        reactions={reactions}
+        memberProfiles={memberProfiles}
+        getSenderName={getSenderName}
+        canDelete={canModifyMessage}
         onClose={closeImageViewer}
+        onSendReply={handleViewerReply}
+        onReact={handleViewerReact}
+        onShowInChat={jumpToMessage}
+        onDelete={handleDeletePress}
+        onForward={handleForwardImage}
       />
       {reactionTarget && !isOtherDeleted ? (
         <MessageActionsMenu
@@ -715,10 +943,25 @@ export default function ChatScreen() {
           canModifyMessage={canModifyMessage}
           onEmojiSelect={handleQuickEmojiSelect}
           onClose={closeReactionMenu}
-          onReply={handleReplySelect}
+          onReply={isSendBlocked ? undefined : handleReplySelect}
           onCopy={handleCopyMessageAction}
-          onEdit={handleEditPress}
+          onEdit={isSendBlocked ? undefined : handleEditPress}
           onDelete={handleDeletePress}
+        />
+      ) : null}
+      <OverflowMenu
+        visible={chatMenuOpen}
+        top={headerInsets.top + spacing.sm}
+        items={chatMenuItems}
+        onClose={() => setChatMenuOpen(false)}
+      />
+      {mutableChildId ? (
+        <MuteChildSheet
+          visible={muteSheetOpen}
+          childId={mutableChildId}
+          childName={memberProfiles[mutableChildId]?.name ?? chatTitle}
+          showDirectOption
+          onClose={() => setMuteSheetOpen(false)}
         />
       ) : null}
     </View>

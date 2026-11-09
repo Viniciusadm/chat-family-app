@@ -16,6 +16,7 @@ interface SearchBarProps {
   onChangeText: (value: string) => void;
   onClear?: () => void;
   placeholder?: string;
+  autoFocus?: boolean;
 }
 
 const createStyles = (t: ThemeTokens) =>
@@ -60,6 +61,7 @@ export function SearchBar({
   onChangeText,
   onClear,
   placeholder = "Buscar em mensagens",
+  autoFocus,
 }: SearchBarProps) {
   const { theme } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -82,6 +84,7 @@ export function SearchBar({
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
+          autoFocus={autoFocus}
           accessibilityLabel="Campo de busca de mensagens"
           maxFontSizeMultiplier={maxFontScale.compact}
         />

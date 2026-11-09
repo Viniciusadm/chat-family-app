@@ -12,9 +12,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
+import { showAlert } from "@/components/AppAlert";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -129,7 +129,7 @@ export default function EncryptionRestoreScreen() {
       const result = await restorePasswordBackups(password);
       if (result.ok) {
         if (result.failedChatIds.length > 0) {
-          Alert.alert(
+          showAlert(
             "Restauração parcial",
             `${result.failedChatIds.length} conversa(s) não puderam ser restauradas e continuarão ilegíveis neste aparelho.`,
           );
@@ -140,7 +140,7 @@ export default function EncryptionRestoreScreen() {
       if (result.reason === "wrong-password") {
         setError("Senha incorreta. Tente novamente.");
       } else if (result.reason === "no-backups") {
-        Alert.alert(
+        showAlert(
           "Sem backups",
           "Não há chaves para restaurar nesta conta. Você poderá conversar normalmente, mas mensagens antigas continuarão ilegíveis.",
         );
@@ -157,7 +157,7 @@ export default function EncryptionRestoreScreen() {
   };
 
   const skip = () => {
-    Alert.alert(
+    showAlert(
       "Pular restauração",
       "Sem a senha, você não poderá ler conversas antigas neste aparelho. Mensagens novas continuarão funcionando. Continuar?",
       [

@@ -1,4 +1,7 @@
-import { formatMessageTime } from "@/lib/formatMessageTime";
+import {
+  formatMessageTime,
+  formatViewerTimestamp,
+} from "@/lib/formatMessageTime";
 
 const now = new Date(2026, 9, 14, 15, 30);
 
@@ -43,5 +46,31 @@ describe("formatMessageTime", () => {
 
   it("does not show Ontem for a message from the same day in a previous month", () => {
     expect(formatMessageTime(new Date(2026, 8, 13, 10, 0), now)).toBe("13/09");
+  });
+});
+
+describe("formatViewerTimestamp", () => {
+  it("shows Hoje with time for today", () => {
+    expect(formatViewerTimestamp(new Date(2026, 9, 14, 9, 5), now)).toBe(
+      "Hoje 09:05"
+    );
+  });
+
+  it("shows Ontem with time for yesterday", () => {
+    expect(formatViewerTimestamp(new Date(2026, 9, 13, 18, 20), now)).toBe(
+      "Ontem 18:20"
+    );
+  });
+
+  it("shows day and month name for older dates in the same year", () => {
+    expect(formatViewerTimestamp(new Date(2026, 8, 2, 18, 20), now)).toBe(
+      "2 de setembro 18:20"
+    );
+  });
+
+  it("includes the year for dates in previous years", () => {
+    expect(formatViewerTimestamp(new Date(2025, 10, 2, 18, 20), now)).toBe(
+      "2 de novembro de 2025 18:20"
+    );
   });
 });

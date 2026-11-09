@@ -16,9 +16,9 @@ interface MessageActionsMenuProps {
   canModifyMessage: (message: Message) => boolean;
   onEmojiSelect: (emoji: string) => void;
   onClose: () => void;
-  onReply: (message: Message) => void;
+  onReply?: (message: Message) => void;
   onCopy: (message: Message) => void;
-  onEdit: (message: Message) => void;
+  onEdit?: (message: Message) => void;
   onDelete: (message: Message) => void;
 }
 
@@ -53,7 +53,7 @@ export function MessageActionsMenu({
       onEmojiSelect={onEmojiSelect}
       onClose={onClose}
       onReply={
-        message && !isDeleted
+        message && !isDeleted && onReply
           ? closeAndRun(() => onReply(message))
           : undefined
       }
@@ -63,7 +63,7 @@ export function MessageActionsMenu({
           : undefined
       }
       onEdit={
-        message && isOwn && isText && canModify
+        message && isOwn && isText && canModify && onEdit
           ? closeAndRun(() => onEdit(message))
           : undefined
       }

@@ -1,8 +1,11 @@
 import { decryptIncomingMessage, decryptIncomingMessages } from "@/lib/encryptedMessages";
 import { ChatRepository } from "@/lib/ChatRepository";
+import { deleteChatMedia } from "@/lib/chatStorage";
+import { isClearedByMark } from "@/lib/clearMarks";
 import { getDatabase, withExclusiveWrite } from "@/lib/db";
 import { rowToMessage, type MessageRow } from "@/lib/messageRows";
 import type { MessageDto } from "@/src/api/chats";
+import type { SQLiteDatabase } from "expo-sqlite";
 import type {
   Message,
   MessagePendingOp,
@@ -77,6 +80,17 @@ async function updateAndEmit(
     emit(conversationId);
     if (refreshPreview) await ChatRepository.refreshLastMessageFromLocal(conversationId);
   }
+}
+
+async function readClearMark(
+  db: Pick<SQLiteDatabase, "getFirstAsync">,
+  conversationId: string
+): Promise<string | null> {
+  const row = await db.getFirstAsync<{ cleared_at: string }>(
+    "SELECT cleared_at FROM chat_clear_marks WHERE chat_id = ?",
+    [conversationId]
+  );
+  return row?.cleared_at ?? null;
 }
 
 function inputParams(message: LocalMessageInput) {
@@ -473,6 +487,63 @@ export const MessageRepository = {
     return row?.created_at ?? null;
   },
 
+  async getClearMark(conversationId: string): Promise<string | null> {
+    const db = await getDatabase();
+    return readClearMark(db, conversationId);
+  },
+
+  async clearLocalConversation(conversationId: string) {
+    const clearedAt = new Date().toISOString();
+    await withExclusiveWrite(async (tx) => {
+      await tx.runAsync(
+        `INSERT INTO chat_clear_marks (chat_id, cleared_at) VALUES (?, ?)
+         ON CONFLICT(chat_id) DO UPDATE SET cleared_at = excluded.cleared_at`,
+        [conversationId, clearedAt]
+      );
+      await tx.runAsync(
+        `DELETE FROM message_reactions
+         WHERE message_id IN (
+           SELECT id FROM messages WHERE conversation_id = ? AND created_at <= ?
+         )`,
+        [conversationId, clearedAt]
+      );
+      await tx.runAsync(
+        "DELETE FROM messages WHERE conversation_id = ? AND created_at <= ?",
+        [conversationId, clearedAt]
+      );
+    });
+    await deleteChatMedia(conversationId);
+    emit(conversationId);
+    await ChatRepository.refreshLastMessageFromLocal(conversationId);
+  },
+
+  async getImageMessages(conversationId: string): Promise<Message[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<MessageRow>(
+      `SELECT m.*, NULL AS quoted_body, NULL AS quoted_is_deleted
+       FROM messages m
+       WHERE m.conversation_id = ?
+         AND m.type = 'image'
+         AND COALESCE(m.is_deleted, 0) = 0
+       ORDER BY m.created_at DESC`,
+      [conversationId]
+    );
+    return rows.map(rowToMessage);
+  },
+
+  async getMessagesForExport(conversationId: string): Promise<Message[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<MessageRow>(
+      `SELECT m.*, NULL AS quoted_body, NULL AS quoted_is_deleted
+       FROM messages m
+       WHERE m.conversation_id = ?
+         AND COALESCE(m.is_deleted, 0) = 0
+       ORDER BY m.created_at ASC`,
+      [conversationId]
+    );
+    return rows.map(rowToMessage);
+  },
+
   async getOldestLocalMessageCreatedAt(conversationId: string): Promise<string | null> {
     const db = await getDatabase();
     const row = await db.getFirstAsync<{ created_at: string | null }>(
@@ -501,6 +572,8 @@ export const MessageRepository = {
     options: { notify?: boolean } = {}
   ) {
     await withExclusiveWrite(async (tx) => {
+      const clearMark = await readClearMark(tx, message.conversationId);
+      if (isClearedByMark(message.createdAt, clearMark)) return;
       await tx.runAsync(UPSERT_MESSAGE_SQL, inputParams(message));
     });
     if (options.notify !== false) {
@@ -515,9 +588,11 @@ export const MessageRepository = {
   ) {
     if (messages.length === 0) return;
     await withExclusiveWrite(async (tx) => {
+      const clearMark = await readClearMark(tx, conversationId);
       const statement = await tx.prepareAsync(UPSERT_MESSAGE_SQL);
       try {
         for (const message of messages) {
+          if (isClearedByMark(message.createdAt, clearMark)) continue;
           await statement.executeAsync(inputParams(message));
         }
       } finally {

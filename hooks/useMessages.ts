@@ -267,7 +267,15 @@ export function useMessages(
         oldest,
         PAGE_SIZE
       );
-      if (!nextSince && isOnline && hasOlderRemoteMessages(chatId)) {
+      const clearMark = nextSince
+        ? null
+        : await MessageRepository.getClearMark(chatId);
+      if (
+        !nextSince &&
+        !clearMark &&
+        isOnline &&
+        hasOlderRemoteMessages(chatId)
+      ) {
         const fetched = await loadOlderRemoteMessages(chatId, oldest, PAGE_SIZE).catch(
           () => 0
         );

@@ -193,10 +193,20 @@ async function migrateToVersion3(db: SQLite.SQLiteDatabase) {
   await ensureColumn(db, "chat_message_sync", "changed_message_id", "TEXT");
 }
 
+async function migrateToVersion4(db: SQLite.SQLiteDatabase) {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS chat_clear_marks (
+      chat_id TEXT PRIMARY KEY,
+      cleared_at TEXT NOT NULL
+    );
+  `);
+}
+
 const MIGRATIONS: ((db: SQLite.SQLiteDatabase) => Promise<void>)[] = [
   migrateToVersion1,
   migrateToVersion2,
   migrateToVersion3,
+  migrateToVersion4,
 ];
 
 async function migrate(db: SQLite.SQLiteDatabase) {

@@ -21,8 +21,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { showAlert } from "@/components/AppAlert";
 import {
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -222,7 +222,7 @@ function ChatInput({
       });
       const edited = await editTextMessage(target, trimmed);
       if (!edited) {
-        Alert.alert(
+        showAlert(
           "Não foi possível editar",
           "Mensagens só podem ser editadas até 1 hora depois de enviadas."
         );
@@ -258,7 +258,7 @@ function ChatInput({
   const openGallery = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert(
+      showAlert(
         "Permissão necessária",
         "Permita acesso às fotos para enviar imagens."
       );
@@ -283,7 +283,7 @@ function ChatInput({
   const openCamera = useCallback(async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert(
+      showAlert(
         "Permissão necessária",
         "Permita acesso à câmera para tirar fotos."
       );
@@ -478,6 +478,7 @@ function ChatInput({
         sending={imageSending}
         onCancel={() => setPendingImage(null)}
         onConfirm={() => void confirmSendImage()}
+        onEdited={setPendingImage}
       />
     </Animated.View>
   );

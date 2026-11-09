@@ -20,8 +20,8 @@ import {
   View,
 } from "react-native";
 
-const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
-const EMOJI_NAMES: Record<string, string> = {
+export const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+export const EMOJI_NAMES: Record<string, string> = {
   "👍": "joinha",
   "❤️": "coração",
   "😂": "risada",

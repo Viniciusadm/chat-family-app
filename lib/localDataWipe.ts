@@ -7,6 +7,7 @@ const USER_TABLES = [
   "message_reactions",
   "chats",
   "chat_message_sync",
+  "chat_clear_marks",
   "admin_members",
   "admin_session_users",
   "admin_pending_devices",

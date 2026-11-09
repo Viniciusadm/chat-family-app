@@ -17,9 +17,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
+import { showAlert } from "@/components/AppAlert";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -261,7 +261,7 @@ export default function EncryptionSettingsScreen() {
         await setupBackupPassword(pwd);
         showToast("Senha criada");
       } catch {
-        Alert.alert("Erro", CRYPTO_FAILURE_MESSAGE);
+        showAlert("Erro", CRYPTO_FAILURE_MESSAGE);
       }
     })();
   };
@@ -290,10 +290,10 @@ export default function EncryptionSettingsScreen() {
           setMode("change");
           setError("Senha atual incorreta.");
         } else {
-          Alert.alert("Erro", "Sem senha configurada.");
+          showAlert("Erro", "Sem senha configurada.");
         }
       } catch {
-        Alert.alert("Erro", CRYPTO_FAILURE_MESSAGE);
+        showAlert("Erro", CRYPTO_FAILURE_MESSAGE);
       }
     })();
   };
@@ -320,7 +320,7 @@ export default function EncryptionSettingsScreen() {
   };
 
   const confirmDisable = () => {
-    Alert.alert(
+    showAlert(
       "Desativar senha",
       "Os backups serão apagados do servidor. Você não poderá restaurar conversas em outro aparelho até criar uma nova senha. Continuar?",
       [
@@ -334,7 +334,7 @@ export default function EncryptionSettingsScreen() {
               try {
                 await disableBackupPassword();
               } catch (e) {
-                Alert.alert("Erro", e instanceof Error ? e.message : "Falha ao desativar.");
+                showAlert("Erro", e instanceof Error ? e.message : "Falha ao desativar.");
               } finally {
                 setBusy(false);
               }

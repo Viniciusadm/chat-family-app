@@ -1,8 +1,8 @@
+import { chatMediaDir } from "@/lib/chatStorage";
 import { downloadProtectedMedia } from "@/lib/mediaDownload";
 import { MessageRepository } from "@/lib/MessageRepository";
 import * as FileSystem from "expo-file-system/legacy";
 
-const AUDIO_CACHE_DIR = `${FileSystem.documentDirectory ?? ""}audio-cache`;
 const inFlightDownloads = new Set<string>();
 
 function extensionFromUrl(url: string): string {
@@ -16,8 +16,8 @@ function extensionFromUrl(url: string): string {
 }
 
 async function ensureAudioCacheDir(chatId: string): Promise<string | null> {
-  if (!FileSystem.documentDirectory) return null;
-  const chatDir = `${AUDIO_CACHE_DIR}/${encodeURIComponent(chatId)}`;
+  const chatDir = chatMediaDir("audio", chatId);
+  if (!chatDir) return null;
   await FileSystem.makeDirectoryAsync(chatDir, { intermediates: true }).catch(() => {});
   return chatDir;
 }

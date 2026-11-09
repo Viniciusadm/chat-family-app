@@ -9,6 +9,7 @@ import { PendingDevicesSection } from "@/components/admin/PendingDevicesSection"
 import { SecuritySection } from "@/components/admin/SecuritySection";
 import { AppHeader } from "@/components/AppHeader";
 import { LoadingDots } from "@/components/LoadingDots";
+import { MuteChildSheet } from "@/components/MuteChildSheet";
 import { ScreenContainer } from "@/components/ScreenContainer";
 import { useAuth } from "@/context/AuthContext";
 import { useAdminData } from "@/hooks/useAdminData";
@@ -18,9 +19,9 @@ import { spacing, type ThemeTokens } from "@/theme/tokens";
 import type { AppMember, Chat } from "@/types/chat";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { showAlert } from "@/components/AppAlert";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   View,
@@ -82,6 +83,7 @@ export default function AdminScreen() {
   const [deviceActionId, setDeviceActionId] = useState<string | null>(null);
   const [chatToDelete, setChatToDelete] = useState<Chat | null>(null);
   const [childToDelete, setChildToDelete] = useState<AppMember | null>(null);
+  const [childToMute, setChildToMute] = useState<AppMember | null>(null);
 
   useEffect(() => {
     if (canMutate) return;
@@ -90,6 +92,7 @@ export default function AdminScreen() {
     setEditingChatId(null);
     setChatToDelete(null);
     setChildToDelete(null);
+    setChildToMute(null);
   }, [canMutate]);
 
   if (currentUser?.role !== "adult") {
@@ -97,7 +100,7 @@ export default function AdminScreen() {
   }
 
   const confirmLogout = () => {
-    Alert.alert("Sair", "Deseja sair da sua conta neste aparelho?", [
+    showAlert("Sair", "Deseja sair da sua conta neste aparelho?", [
       { text: "Cancelar", style: "cancel" },
       {
         text: "Sair",
@@ -115,7 +118,7 @@ export default function AdminScreen() {
     try {
       await approveDevice(deviceId);
     } catch (e) {
-      Alert.alert(
+      showAlert(
         "Erro ao aprovar",
         errorMessage(e, "Não foi possível aprovar o dispositivo.")
       );
@@ -130,7 +133,7 @@ export default function AdminScreen() {
     try {
       await rejectDevice(deviceId);
     } catch (e) {
-      Alert.alert(
+      showAlert(
         "Erro ao recusar",
         errorMessage(e, "Não foi possível recusar o dispositivo.")
       );
@@ -173,6 +176,7 @@ export default function AdminScreen() {
             canMutate={canMutate}
             onAddUser={() => setShowAddUser(true)}
             onDeleteChild={setChildToDelete}
+            onMuteChild={setChildToMute}
           />
           <PendingDevicesSection
             pendingDevices={pendingDevices}
@@ -245,6 +249,16 @@ export default function AdminScreen() {
         onClose={() => setChildToDelete(null)}
         deleteChildMember={deleteChildMember}
       />
+
+      {childToMute ? (
+        <MuteChildSheet
+          visible={canMutate}
+          childId={childToMute.id}
+          childName={childToMute.name}
+          showDirectOption
+          onClose={() => setChildToMute(null)}
+        />
+      ) : null}
     </ScreenContainer>
   );
 }
