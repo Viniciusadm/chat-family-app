@@ -38,7 +38,7 @@ const createStyles = (t: ThemeTokens) =>
       textAlign: "center",
     },
     list: {
-      paddingBottom: spacing.huge,
+      paddingBottom: spacing.lg,
     },
   });
 

@@ -20,20 +20,16 @@ import {
 } from "@/lib/messageImageFile";
 import { useThemedStyles } from "@/theme/useThemedStyles";
 import { fontSizes, radius, spacing } from "@/theme/tokens";
-import type { Message, Reaction } from "@/types/chat";
+import type { Message } from "@/types/chat";
 import * as Clipboard from "expo-clipboard";
 import * as Sharing from "expo-sharing";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Dimensions,
-  Keyboard,
-  Modal,
-  Platform,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Keyboard, Modal, StyleSheet, Text } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import {
+  useKeyboardState,
+  useReanimatedKeyboardAnimation,
+} from "react-native-keyboard-controller";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -48,13 +44,11 @@ interface ImageViewerProps {
   currentUserId: string;
   readOnly: boolean;
   canReply: boolean;
-  reactions: Record<string, Reaction[]>;
   memberProfiles: Record<string, MemberProfile>;
   getSenderName: (message: Message) => string;
   canDelete: (message: Message) => boolean;
   onClose: () => void;
   onSendReply: (message: Message, text: string) => void;
-  onReact: (messageId: string, emoji: string) => void;
   onShowInChat: (messageId: string) => void;
   onDelete: (message: Message) => void;
   onForward: (message: Message, targetChatId: string) => Promise<boolean>;
@@ -70,13 +64,11 @@ export function ImageViewer({
   currentUserId,
   readOnly,
   canReply,
-  reactions,
   memberProfiles,
   getSenderName,
   canDelete,
   onClose,
   onSendReply,
-  onReact,
   onShowInChat,
   onDelete,
   onForward,
@@ -94,34 +86,10 @@ export function ImageViewer({
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastIndexRef = useRef(0);
   const chromeOpacity = useSharedValue(1);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const bottomInsetRef = useRef(insets.bottom);
-  bottomInsetRef.current = insets.bottom;
-
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      const { height, screenY } = event.endCoordinates;
-      if (Platform.OS !== "android") {
-        setKeyboardHeight(height);
-        return;
-      }
-      const fromTopEdge = Dimensions.get("screen").height - screenY;
-      setKeyboardHeight(
-        Math.max(height + bottomInsetRef.current, fromTopEdge)
-      );
-    });
-    const hideSubscription = Keyboard.addListener(hideEvent, () => {
-      setKeyboardHeight(0);
-    });
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
+  const { height: keyboardHeight, progress: keyboardProgress } =
+    useReanimatedKeyboardAnimation();
+  const keyboardVisible = useKeyboardState((state) => state.isVisible);
+  const bottomInset = insets.bottom;
 
   const openKey = visible ? initialMessageId : null;
   const [syncedOpenKey, setSyncedOpenKey] = useState<string | null>(openKey);
@@ -190,13 +158,13 @@ export function ImageViewer({
   );
 
   const toggleChrome = useCallback(() => {
-    if (keyboardHeight > 0) {
+    if (keyboardVisible) {
       Keyboard.dismiss();
       return;
     }
     setMenuOpen(false);
     setChromeVisible((value) => !value);
-  }, [keyboardHeight]);
+  }, [keyboardVisible]);
 
   const withImageFile = useCallback(
     async (message: Message, action: (fileUri: string) => Promise<void>) => {
@@ -269,14 +237,6 @@ export function ImageViewer({
     [currentMessage, onSendReply, showFeedback]
   );
 
-  const handleReact = useCallback(
-    (emoji: string) => {
-      if (!currentMessage) return;
-      onReact(currentMessage.id, emoji);
-    },
-    [currentMessage, onReact]
-  );
-
   const handleRequestClose = useCallback(() => {
     if (forwardOpen) {
       setForwardOpen(false);
@@ -291,6 +251,15 @@ export function ImageViewer({
 
   const chromeStyle = useAnimatedStyle(() => ({
     opacity: chromeOpacity.value,
+  }));
+
+  const keyboardOffsetStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY:
+          keyboardHeight.value + bottomInset * keyboardProgress.value,
+      },
+    ],
   }));
 
   const menuItems: ViewerMenuItem[] = currentMessage
@@ -330,12 +299,6 @@ export function ImageViewer({
       ]
     : [];
 
-  const ownReaction = currentMessage
-    ? (reactions[currentMessage.id] ?? []).find(
-        (reaction) => reaction.userId === currentUserId
-      )?.emoji ?? null
-    : null;
-
   const senderName = currentMessage
     ? currentMessage.senderId === currentUserId
       ? "Você"
@@ -348,6 +311,7 @@ export function ImageViewer({
       transparent
       animationType="fade"
       statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={handleRequestClose}
     >
       <GestureHandlerRootView style={styles.root}>
@@ -377,26 +341,28 @@ export function ImageViewer({
         ) : null}
         {currentMessage && !readOnly ? (
           <Animated.View
-            style={[styles.bottom, { bottom: keyboardHeight }, chromeStyle]}
+            style={[styles.bottom, keyboardOffsetStyle, chromeStyle]}
             pointerEvents={chromeVisible ? "box-none" : "none"}
           >
             <ViewerFooter
               key={currentMessage.id}
-              bottomInset={keyboardHeight > 0 ? 0 : insets.bottom}
-              ownReaction={ownReaction}
+              bottomInset={bottomInset}
               onSendReply={canReply ? handleSendReply : undefined}
-              onReact={handleReact}
             />
           </Animated.View>
         ) : null}
         {feedback ? (
-          <View
-            style={[styles.feedback, { bottom: (keyboardHeight > 0 ? keyboardHeight : insets.bottom) + 96 }]}
+          <Animated.View
+            style={[
+              styles.feedback,
+              { bottom: bottomInset + 96 },
+              keyboardOffsetStyle,
+            ]}
             pointerEvents="none"
             accessibilityLiveRegion="polite"
           >
             <Text style={styles.feedbackText}>{feedback}</Text>
-          </View>
+          </Animated.View>
         ) : null}
         {menuOpen && currentMessage ? (
           <ViewerMenu

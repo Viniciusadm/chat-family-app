@@ -21,7 +21,6 @@ import { useChatMedia } from "@/hooks/useChatMedia";
 import { useChildMutes } from "@/hooks/useChildMutes";
 import { useConversationActions } from "@/hooks/useConversationActions";
 import { useMemberProfiles } from "@/hooks/useMemberProfiles";
-import { useReactions } from "@/hooks/useReactions";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import {
   getChatDisplayName,
@@ -102,8 +101,8 @@ const createStyles = (t: ThemeTokens) =>
       gap: spacing.xxl,
       backgroundColor: t.background,
     },
-    content: {
-      minHeight: 360,
+    scrollContent: {
+      paddingBottom: spacing.lg,
     },
     center: {
       flex: 1,
@@ -137,7 +136,6 @@ export default function ChatInfoScreen() {
     deleteChat,
   } = useAdminData();
   const { images, loading: mediaLoading } = useChatMedia(chatId);
-  const { reactions, reactToMessage } = useReactions(chatId);
   const { sendText, forwardImage, deleteMessage, canModifyMessage } =
     useSendMessage(chatId);
 
@@ -361,7 +359,7 @@ export default function ChatInfoScreen() {
   ];
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingBottom: insets.bottom }]}>
       <StatusBar style={resolvedScheme === "dark" ? "light" : "dark"} />
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
@@ -390,9 +388,7 @@ export default function ChatInfoScreen() {
       ) : (
         <ScrollView
           stickyHeaderIndices={[1]}
-          contentContainerStyle={{
-            paddingBottom: insets.bottom + spacing.huge,
-          }}
+          contentContainerStyle={styles.scrollContent}
         >
           <View style={styles.hero}>
             <ChatInfoHero
@@ -408,7 +404,7 @@ export default function ChatInfoScreen() {
             <ChatInfoActions actions={actions} />
           </View>
           <ChatInfoTabs tabs={tabs} selected={tab} onSelect={setTab} />
-          <View style={styles.content}>
+          <View>
             {tab === "members" ? (
               <MembersTab
                 chat={chat}
@@ -469,13 +465,11 @@ export default function ChatInfoScreen() {
         currentUserId={currentUserId}
         readOnly={isOtherDeleted}
         canReply={sendBlock === null}
-        reactions={reactions}
         memberProfiles={memberProfiles}
         getSenderName={getSenderName}
         canDelete={canModifyMessage}
         onClose={() => setViewerMessageId(null)}
         onSendReply={handleViewerReply}
-        onReact={(messageId, emoji) => void reactToMessage(messageId, emoji)}
         onShowInChat={openMessageInChat}
         onDelete={handleViewerDelete}
         onForward={handleForwardImage}

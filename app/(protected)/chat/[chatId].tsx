@@ -585,13 +585,6 @@ export default function ChatScreen() {
     [sendText, getSenderName]
   );
 
-  const handleViewerReact = useCallback(
-    (messageId: string, emoji: string) => {
-      void reactToMessage(messageId, emoji);
-    },
-    [reactToMessage]
-  );
-
   const handleForwardImage = useCallback(
     async (message: Message, targetChatId: string) => {
       if (isChildUser && currentUserId) {
@@ -924,13 +917,11 @@ export default function ChatScreen() {
         currentUserId={currentUserId}
         readOnly={isOtherDeleted}
         canReply={!isSendBlocked}
-        reactions={reactions}
         memberProfiles={memberProfiles}
         getSenderName={getSenderName}
         canDelete={canModifyMessage}
         onClose={closeImageViewer}
         onSendReply={handleViewerReply}
-        onReact={handleViewerReact}
         onShowInChat={jumpToMessage}
         onDelete={handleDeletePress}
         onForward={handleForwardImage}
