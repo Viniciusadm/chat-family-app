@@ -285,6 +285,30 @@ export const ChatRepository = {
     }
   },
 
+  async markRead(chatId: string, memberId: string, readAtMs: number, currentMemberId: string) {
+    await withExclusiveWrite(async (tx) => {
+      const row = await tx.getFirstAsync<ChatRow>("SELECT * FROM chats WHERE id = ?", [chatId]);
+      if (!row) return;
+      const readUpTo = parseReadUpTo(row.read_up_to) ?? {};
+      const targetMs = Math.max(readAtMs, readUpTo[memberId]?.toMillis() ?? 0);
+      readUpTo[memberId] = timestampFromMillis(targetMs);
+      let unreadCount = row.unread_count;
+      if (memberId === currentMemberId) {
+        const unread = await tx.getFirstAsync<{ count: number }>(
+          `SELECT COUNT(*) AS count FROM messages WHERE conversation_id = ?
+           AND sender_id <> ? AND created_at > ? AND status = 'sent'
+           AND COALESCE(is_deleted, 0) = 0`,
+          [chatId, memberId, new Date(targetMs).toISOString()]
+        );
+        unreadCount = unread?.count ?? 0;
+      }
+      await tx.runAsync("UPDATE chats SET read_up_to = ?, unread_count = ? WHERE id = ?", [
+        serializeReadUpTo(readUpTo), unreadCount, chatId,
+      ]);
+    });
+    emit();
+  },
+
   async updateLastMessage(
     chatId: string,
     lastMessage: {
@@ -335,7 +359,17 @@ export const ChatRepository = {
        LIMIT 1`,
       [chatId]
     );
-    if (!row) return;
+    if (!row) {
+      await withExclusiveWrite(async (tx) => {
+        await tx.runAsync(
+          `UPDATE chats SET last_message_text = NULL, last_message_type = NULL,
+           last_message_at = NULL WHERE id = ?`,
+          [chatId]
+        );
+      });
+      if (options.notify !== false) emit();
+      return;
+    }
     const type: "text" | "audio" | "image" =
       row.type === "audio" ? "audio" : row.type === "image" ? "image" : "text";
     await this.updateLastMessage(

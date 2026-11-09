@@ -139,7 +139,10 @@ async function syncChatHistoryOnce(chatId: string, deviceId?: string) {
     await repairConversationKeyFromPendingShare(chatId, deviceId);
     const syncState = await MessageRepository.getMessageSyncState(chatId);
     let newestMessageAt = syncState.newestMessageAt;
-    let changedAt = syncState.changedAt;
+    // New history must never advance the edit cursor: an older message may have
+    // changed before one of these newly created messages arrived.
+    const changedAt = syncState.changedAt ??
+      syncState.newestMessageAt?.toISOString() ?? "1970-01-01T00:00:00.000Z";
 
     while (true) {
       // The cursor has to advance on every page, otherwise the server keeps
@@ -155,13 +158,6 @@ async function syncChatHistoryOnce(chatId: string, deviceId?: string) {
         const createdAt = data.created_at ? new Date(data.created_at) : null;
         if (createdAt && (!newestMessageAt || createdAt > newestMessageAt)) {
           newestMessageAt = createdAt;
-        }
-        if (
-          data.updated_at &&
-          (!changedAt ||
-            new Date(data.updated_at).getTime() > new Date(changedAt).getTime())
-        ) {
-          changedAt = data.updated_at;
         }
       }
       await applyRemoteMessages(chatId, rows);

@@ -152,6 +152,14 @@ export function useChats(): {
       void refreshChangedChats(chatIds, isActive).catch(() => {});
     }, REALTIME_REFRESH_DELAY_MS);
     const unsubRealtime = realtimeClient.subscribe((event) => {
+      if (event.type === "chat.read" && event.chat_id) {
+        const { member_id, read_up_to } = event.payload;
+        const readAtMs = typeof read_up_to === "string" ? Date.parse(read_up_to) : NaN;
+        if (typeof member_id === "string" && Number.isFinite(readAtMs)) {
+          void ChatRepository.markRead(event.chat_id, member_id, readAtMs, currentUser.id).catch(() => {});
+        }
+        return;
+      }
       if (event.type === "chat.deleted") {
         // The chat is already gone server-side, so it carries its id in the payload
         // instead of chat_id, and a remote refresh would never prune it locally.

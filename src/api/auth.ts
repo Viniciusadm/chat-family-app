@@ -10,6 +10,8 @@ export type ApiUser = {
   role: ApiRole;
   email: string | null;
   device_id: string | null;
+  photo_url?: string | null;
+  photo_path?: string | null;
 };
 
 export type TokenResponse = {

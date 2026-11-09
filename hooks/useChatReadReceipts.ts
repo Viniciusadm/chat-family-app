@@ -16,6 +16,13 @@ export function useChatReadReceipts(
   const { currentUser } = useAuth();
   const { isOnline } = useConnectivity();
   const isFocused = useIsFocused();
+  const currentUserId = currentUser?.id;
+  let targetMs: number | null = null;
+  for (const message of messages) {
+    // Server timestamps have microseconds; include the whole final millisecond
+    // after converting them to JavaScript dates, and ignore unsent local rows.
+    if (message.status === "sent") targetMs = message.createdAtMs + 1;
+  }
   const [readUpTo, setReadUpTo] = useState<Record<string, LocalTimestamp> | null>(
     localReadUpTo ?? null
   );
@@ -38,23 +45,33 @@ export function useChatReadReceipts(
   }, [chatId, localReadUpTo]);
 
   useEffect(() => {
-    if (!isOnline || !isFocused || !chatId || !currentUser?.id || messages.length === 0) {
+    if (!isFocused || !chatId || !currentUserId || targetMs == null) {
       return;
     }
-    const uid = currentUser.id;
-    const last = messages[messages.length - 1];
+    const uid = currentUserId;
+    let active = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const syncRead = async () => {
+      try {
+        await markRead(chatId, new Date(targetMs).toISOString());
+      } catch {
+        if (active) retry = setTimeout(() => void syncRead(), 5000);
+      }
+    };
     const id = setTimeout(() => {
-      const targetMs = last.createdAtMs;
-      const existing = readUpTo?.[uid];
-      if (existing && existing.toMillis() >= targetMs) return;
       setReadUpTo((prev) => ({
         ...(prev ?? {}),
-        [uid]: timestampFromMillis(targetMs),
+        [uid]: timestampFromMillis(Math.max(targetMs, prev?.[uid]?.toMillis() ?? 0)),
       }));
-      void markRead(chatId, new Date(targetMs).toISOString()).catch(() => {});
+      void ChatRepository.markRead(chatId, uid, targetMs, uid).catch(() => {});
+      if (isOnline) void syncRead();
     }, 400);
-    return () => clearTimeout(id);
-  }, [isOnline, isFocused, chatId, currentUser?.id, messages, readUpTo]);
+    return () => {
+      active = false;
+      clearTimeout(id);
+      if (retry) clearTimeout(retry);
+    };
+  }, [isOnline, isFocused, chatId, currentUserId, targetMs]);
 
   return { readUpTo };
 }

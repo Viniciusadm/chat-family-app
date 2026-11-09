@@ -34,6 +34,8 @@ function userFromApi(user: authApi.ApiUser): AppUser {
     tenantId: user.tenant_id,
     name: user.name,
     role: user.role,
+    photoUrl: user.photo_url ?? null,
+    photoPath: user.photo_path ?? null,
   };
 }
 

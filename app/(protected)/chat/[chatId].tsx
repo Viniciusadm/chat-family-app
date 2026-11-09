@@ -534,9 +534,6 @@ export default function ChatScreen() {
           onRetryAudio={isOtherDeleted ? undefined : retryAudioMessage}
           onRetryText={isOtherDeleted ? undefined : retryTextMessage}
           highlighted={highlightedMessageId === message.id}
-          replyAvailable={
-            !message.replyTo || messagesById.has(message.replyTo.id)
-          }
           onQuotedReplyPress={jumpToMessage}
           onSenderPress={showSender ? openMemberProfile : undefined}
           onOpenImage={openImageViewer}
@@ -561,7 +558,6 @@ export default function ChatScreen() {
       isOtherDeleted,
       jumpToMessage,
       memberProfiles,
-      messagesById,
       openImageViewer,
       openMemberProfile,
       openReactionsDialog,

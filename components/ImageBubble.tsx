@@ -16,6 +16,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -65,6 +66,9 @@ const createStyles = (t: ThemeTokens) =>
 
 function ImageBubbleImpl({ message, onPress, onLongPress, onRetry }: ImageBubbleProps) {
   const styles = useThemedStyles(createStyles);
+  const { width: windowWidth } = useWindowDimensions();
+  // Match the parent column's 80% limit, including its border and image padding.
+  const width = Math.min(MAX_BUBBLE_WIDTH, (windowWidth - spacing.md * 2) * 0.8 - spacing.xs * 2 - 4);
   const aspect = useMemo(() => {
     if (!message.imageWidth || !message.imageHeight) return DEFAULT_RATIO;
     const raw = message.imageWidth / message.imageHeight;
@@ -72,7 +76,7 @@ function ImageBubbleImpl({ message, onPress, onLongPress, onRetry }: ImageBubble
     return Math.min(MAX_RATIO, Math.max(MIN_RATIO, raw));
   }, [message.imageWidth, message.imageHeight]);
 
-  const height = MAX_BUBBLE_WIDTH / aspect;
+  const height = width / aspect;
 
   const source =
     message.imageLocalUri ??
@@ -91,7 +95,7 @@ function ImageBubbleImpl({ message, onPress, onLongPress, onRetry }: ImageBubble
       accessibilityLabel="Imagem"
       accessibilityHint="Toque duas vezes para abrir em tela cheia"
       accessibilityState={{ busy: isUploading }}
-      style={[styles.wrap, { width: MAX_BUBBLE_WIDTH, height }]}
+      style={[styles.wrap, { width, height }]}
     >
       {source ? (
         <Image

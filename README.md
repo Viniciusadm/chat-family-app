@@ -48,7 +48,7 @@ npm run android
 
 `npm run ios` does the same for iOS. After the first build, `npm start` serves the JavaScript to the installed development build.
 
-Check the code with ESLint and run the unit tests (Jest with `jest-expo`; they cover the crypto, search, reply previews, time formatting and the outbox locks):
+Check the code with ESLint and run the unit tests (Jest with `jest-expo`; they cover the crypto, search, reply previews, time formatting, outbox locks, history sync and local read state). The SQL regression tests use `node:sqlite` and require Node.js 22.13 or newer:
 
 ```bash
 npm run lint

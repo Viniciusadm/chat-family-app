@@ -82,6 +82,7 @@ const createStyles = (t: ThemeTokens) =>
       fontSize: fontSizes.bodySmall,
       color: t.foreground,
       padding: 0,
+      maxHeight: 120,
     },
     roundBtn: {
       width: 44,

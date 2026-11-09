@@ -280,7 +280,9 @@ export function useMessages(
         }
       }
       if (!isActive()) return;
-      windowRef.current = { chatId, since: nextSince ?? oldest };
+      // A request with no older rows must not pin the window to a local send
+      // timestamp: the server may confirm that message with an earlier time.
+      if (nextSince) windowRef.current = { chatId, since: nextSince };
       await loadLocalMessages(chatId, isActive);
     } finally {
       loadingOlderRef.current = false;

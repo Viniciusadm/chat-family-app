@@ -1,4 +1,5 @@
 import { decryptIncomingMessage } from "@/lib/encryptedMessages";
+import { ChatRepository } from "@/lib/ChatRepository";
 import { getDatabase, withExclusiveWrite } from "@/lib/db";
 import { rowToMessage, type MessageRow } from "@/lib/messageRows";
 import type { MessageDto } from "@/src/api/chats";
@@ -58,7 +59,8 @@ function emit(conversationId: string) {
 async function updateAndEmit(
   messageId: string,
   sql: string,
-  params: (string | number | null)[]
+  params: (string | number | null)[],
+  refreshPreview = false
 ) {
   let conversationId: string | undefined;
   await withExclusiveWrite(async (tx) => {
@@ -70,7 +72,10 @@ async function updateAndEmit(
     conversationId = existing.conversation_id;
     await tx.runAsync(sql, params);
   });
-  if (conversationId) emit(conversationId);
+  if (conversationId) {
+    emit(conversationId);
+    if (refreshPreview) await ChatRepository.refreshLastMessageFromLocal(conversationId);
+  }
 }
 
 function inputParams(message: LocalMessageInput) {
@@ -778,7 +783,10 @@ export const MessageRepository = {
         ]
       );
     });
-    if (conversationId) emit(conversationId);
+    if (conversationId) {
+      emit(conversationId);
+      await ChatRepository.refreshLastMessageFromLocal(conversationId);
+    }
   },
 
   async overwritePendingCreateBody(id: string, newBody: string) {
@@ -787,7 +795,8 @@ export const MessageRepository = {
       `UPDATE messages
        SET body = ?, updated_at = ?
        WHERE id = ?`,
-      [newBody, new Date().toISOString(), id]
+      [newBody, new Date().toISOString(), id],
+      true
     );
   },
 
@@ -805,7 +814,8 @@ export const MessageRepository = {
            edit_attempts = 0,
            updated_at = ?
        WHERE id = ?`,
-      [deletedAtIso, options.pendingOp, deletedAtIso, id]
+      [deletedAtIso, options.pendingOp, deletedAtIso, id],
+      true
     );
   },
 
@@ -906,6 +916,7 @@ export const MessageRepository = {
       });
     }
     emit(row.conversation_id);
+    await ChatRepository.refreshLastMessageFromLocal(row.conversation_id);
   },
 
   async getMessageSyncState(conversationId: string): Promise<{
